@@ -1,0 +1,686 @@
+/* =========================================================
+   LIVE DETECTION PAGE
+   ========================================================= */
+
+.live-page {
+  padding:
+    6px 0
+    32px;
+}
+
+
+/* =========================================================
+   HEADER
+   ========================================================= */
+
+.live-heading {
+  display: flex;
+
+  align-items: flex-start;
+  justify-content: space-between;
+
+  gap: 24px;
+
+  margin-bottom: 20px;
+
+  padding:
+    24px 26px;
+
+  border:
+    1px solid #e4e9f1;
+
+  border-radius: 18px;
+
+  background:
+    #ffffff;
+
+  box-shadow:
+    0 5px 20px
+    rgba(15, 23, 42, 0.045);
+}
+
+.live-heading h1 {
+  margin:
+    3px 0
+    5px;
+
+  color:
+    #0f172a;
+
+  font-size:
+    30px;
+
+  line-height:
+    1.15;
+
+  letter-spacing:
+    -0.035em;
+}
+
+.live-heading p {
+  margin: 0;
+
+  color:
+    #64748b;
+
+  font-size:
+    13px;
+
+  line-height:
+    1.55;
+}
+
+.live-eyebrow {
+  margin: 0;
+
+  color:
+    #64748b;
+
+  font-size:
+    10px;
+
+  font-weight:
+    800;
+
+  text-transform:
+    uppercase;
+
+  letter-spacing:
+    0.17em;
+}
+
+
+/* =========================================================
+   CONNECTION STATUS
+   ========================================================= */
+
+.live-status {
+  display: inline-flex;
+
+  align-items: center;
+
+  gap: 7px;
+
+  padding:
+    7px 11px;
+
+  border:
+    1px solid #e2e8f0;
+
+  border-radius:
+    999px;
+
+  background:
+    #f8fafc;
+
+  color:
+    #64748b;
+
+  font-size:
+    11px;
+
+  font-weight:
+    800;
+
+  white-space:
+    nowrap;
+}
+
+.live-status::before {
+  content: "";
+
+  width: 7px;
+  height: 7px;
+
+  border-radius:
+    50%;
+
+  background:
+    #94a3b8;
+}
+
+.live-status.active {
+  border-color:
+    #bbf7d0;
+
+  background:
+    #f0fdf4;
+
+  color:
+    #166534;
+}
+
+.live-status.active::before {
+  background:
+    #22c55e;
+
+  box-shadow:
+    0 0 0 4px
+    rgba(34, 197, 94, 0.12);
+}
+
+
+/* =========================================================
+   ERROR
+   ========================================================= */
+
+.live-error {
+  margin-bottom:
+    18px;
+
+  padding:
+    14px 16px;
+
+  border:
+    1px solid #fecaca;
+
+  border-radius:
+    12px;
+
+  background:
+    #fef2f2;
+
+  color:
+    #991b1b;
+
+  font-size:
+    13px;
+}
+
+
+/* =========================================================
+   CAMERA PANEL
+   ========================================================= */
+
+.camera-panel {
+  width: 100%;
+}
+
+
+/* =========================================================
+   CAMERA STAGE
+   ========================================================= */
+
+.camera-stage {
+  position: relative;
+
+  width: 100%;
+
+  max-width:
+    1200px;
+
+  aspect-ratio:
+    16 / 9;
+
+  overflow:
+    hidden;
+
+  border:
+    1px solid #dbe2ea;
+
+  border-radius:
+    20px;
+
+  background:
+    linear-gradient(
+      145deg,
+      #111827,
+      #020617
+    );
+
+  box-shadow:
+    0 12px 32px
+    rgba(15, 23, 42, 0.14);
+}
+
+.live-video,
+.live-overlay {
+  position:
+    absolute;
+
+  inset: 0;
+
+  width:
+    100%;
+
+  height:
+    100%;
+}
+
+.live-video {
+  object-fit:
+    contain;
+}
+
+.live-overlay {
+  pointer-events:
+    none;
+}
+
+
+/* =========================================================
+   CAMERA PLACEHOLDER
+   ========================================================= */
+
+.camera-placeholder {
+  position:
+    absolute;
+
+  inset: 0;
+
+  display:
+    flex;
+
+  align-items:
+    center;
+
+  justify-content:
+    center;
+
+  padding:
+    30px;
+
+  color:
+    #94a3b8;
+
+  font-size:
+    15px;
+
+  font-weight:
+    600;
+
+  text-align:
+    center;
+}
+
+
+/* =========================================================
+   CAMERA CONTROLS
+   ========================================================= */
+
+.camera-controls {
+  display:
+    flex;
+
+  flex-wrap:
+    wrap;
+
+  gap:
+    10px;
+
+  margin-top:
+    16px;
+}
+
+.camera-controls button {
+  min-height:
+    42px;
+
+  padding:
+    9px 17px;
+
+  border:
+    1px solid #dbe2ea;
+
+  border-radius:
+    10px;
+
+  background:
+    #ffffff;
+
+  color:
+    #334155;
+
+  font-size:
+    13px;
+
+  font-weight:
+    750;
+
+  cursor:
+    pointer;
+
+  box-shadow:
+    0 2px 5px
+    rgba(15, 23, 42, 0.04);
+
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease,
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.camera-controls button:hover:not(:disabled) {
+  border-color:
+    #93c5fd;
+
+  background:
+    #eff6ff;
+
+  color:
+    #1d4ed8;
+
+  transform:
+    translateY(-1px);
+
+  box-shadow:
+    0 5px 14px
+    rgba(37, 99, 235, 0.1);
+}
+
+.camera-controls button:active:not(:disabled) {
+  transform:
+    translateY(0);
+}
+
+.camera-controls button:disabled {
+  cursor:
+    not-allowed;
+
+  opacity:
+    0.45;
+}
+
+
+/* =========================================================
+   LIVE STAT CARDS
+   ========================================================= */
+
+.live-stats {
+  display:
+    grid;
+
+  grid-template-columns:
+    repeat(
+      auto-fit,
+      minmax(180px, 1fr)
+    );
+
+  gap:
+    14px;
+
+  max-width:
+    1200px;
+
+  margin-top:
+    22px;
+}
+
+.live-stats > div {
+  position:
+    relative;
+
+  min-width:
+    0;
+
+  padding:
+    18px 19px;
+
+  overflow:
+    hidden;
+
+  border:
+    1px solid #e4e9f1;
+
+  border-radius:
+    14px;
+
+  background:
+    #ffffff;
+
+  box-shadow:
+    0 4px 16px
+    rgba(15, 23, 42, 0.04);
+
+  transition:
+    transform 0.16s ease,
+    box-shadow 0.16s ease,
+    border-color 0.16s ease;
+}
+
+.live-stats > div::before {
+  content: "";
+
+  position:
+    absolute;
+
+  top: 0;
+  left: 0;
+  right: 0;
+
+  height:
+    3px;
+
+  background:
+    #3b82f6;
+}
+
+.live-stats > div:nth-child(2)::before {
+  background:
+    #8b5cf6;
+}
+
+.live-stats > div:nth-child(3)::before {
+  background:
+    #06b6d4;
+}
+
+.live-stats > div:nth-child(4)::before {
+  background:
+    #22c55e;
+}
+
+.live-stats > div:hover {
+  transform:
+    translateY(-2px);
+
+  border-color:
+    #d2dae6;
+
+  box-shadow:
+    0 8px 22px
+    rgba(15, 23, 42, 0.07);
+}
+
+.live-stats span {
+  display:
+    block;
+
+  margin-bottom:
+    8px;
+
+  color:
+    #64748b;
+
+  font-size:
+    10px;
+
+  font-weight:
+    800;
+
+  text-transform:
+    uppercase;
+
+  letter-spacing:
+    0.075em;
+}
+
+.live-stats strong {
+  color:
+    #0f172a;
+
+  font-size:
+    26px;
+
+  font-weight:
+    800;
+
+  letter-spacing:
+    -0.035em;
+}
+
+
+/* =========================================================
+   DARK MODE
+   ========================================================= */
+
+body.dark-mode
+.live-heading,
+body.dark-mode
+.live-stats > div {
+  background:
+    #0f172a;
+
+  border-color:
+    #243247;
+
+  box-shadow:
+    0 8px 24px
+    rgba(0, 0, 0, 0.2);
+}
+
+body.dark-mode
+.live-heading h1,
+body.dark-mode
+.live-stats strong {
+  color:
+    #f8fafc;
+}
+
+body.dark-mode
+.live-heading p,
+body.dark-mode
+.live-eyebrow,
+body.dark-mode
+.live-stats span {
+  color:
+    #8090a8;
+}
+
+body.dark-mode
+.live-status {
+  background:
+    #131e30;
+
+  border-color:
+    #2a374b;
+
+  color:
+    #94a3b8;
+}
+
+body.dark-mode
+.live-status.active {
+  background:
+    #0e2d25;
+
+  border-color:
+    #14532d;
+
+  color:
+    #86efac;
+}
+
+body.dark-mode
+.live-error {
+  background:
+    #3f1519;
+
+  border-color:
+    #7f1d1d;
+
+  color:
+    #fecaca;
+}
+
+body.dark-mode
+.camera-stage {
+  border-color:
+    #29384d;
+
+  box-shadow:
+    0 14px 34px
+    rgba(0, 0, 0, 0.28);
+}
+
+body.dark-mode
+.camera-controls button {
+  background:
+    #111827;
+
+  border-color:
+    #2d3b50;
+
+  color:
+    #cbd5e1;
+
+  box-shadow:
+    none;
+}
+
+body.dark-mode
+.camera-controls button:hover:not(:disabled) {
+  background:
+    #172554;
+
+  border-color:
+    #1d4ed8;
+
+  color:
+    #bfdbfe;
+}
+
+body.dark-mode
+.live-stats > div:hover {
+  border-color:
+    #334765;
+}
+
+
+/* =========================================================
+   RESPONSIVE
+   ========================================================= */
+
+@media (max-width: 700px) {
+
+  .live-heading {
+    flex-direction:
+      column;
+
+    padding:
+      20px;
+  }
+
+  .live-heading h1 {
+    font-size:
+      26px;
+  }
+
+  .live-status {
+    align-self:
+      flex-start;
+  }
+
+  .camera-stage {
+    border-radius:
+      15px;
+  }
+
+  .camera-controls {
+    flex-direction:
+      column;
+  }
+
+  .camera-controls button {
+    width:
+      100%;
+  }
+
+  .live-stats {
+    grid-template-columns:
+      1fr;
+  }
+
+}

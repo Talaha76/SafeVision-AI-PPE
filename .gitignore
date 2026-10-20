@@ -1,0 +1,16 @@
+.env
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+htmlcov/
+node_modules/
+dist/
+evidence/*
+!evidence/.gitkeep
+ml/weights/*.pt
+!ml/weights/ppe.pt
+ml/evaluation/results/*
+!ml/evaluation/results/.gitkeep
+.idea/

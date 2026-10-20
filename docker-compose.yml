@@ -1,0 +1,46 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: safevision
+      POSTGRES_USER: safevision
+      POSTGRES_PASSWORD: safevision
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U safevision -d safevision"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    environment:
+      DATABASE_URL: postgresql+psycopg://safevision:safevision@postgres:5432/safevision
+      MODEL_PATH: /models/ppe.pt
+      PERSON_MODEL_PATH: ""
+      PERSON_CLASS_NAME: person
+      EVIDENCE_DIR: /app/evidence
+      FRONTEND_ORIGIN: http://localhost:5173
+      INCIDENT_COOLDOWN_SECONDS: 30
+      ABSENCE_BASED_PPE: ""
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./ml/weights:/models:ro
+      - ./evidence:/app/evidence
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  frontend:
+    build: ./frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
