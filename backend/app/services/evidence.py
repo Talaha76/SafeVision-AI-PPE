@@ -1,10 +1,94 @@
-import cv2
-import numpy as np
-
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.db.models import IncidentEvidence
+
+
+def _prune_old_evidence(
+    db: Session,
+    keep_latest: int = 100,
+) -> None:
+    if keep_latest <= 0:
+        return
+
+    old_evidence_ids = db.scalars(
+        select(
+            IncidentEvidence.id
+        )
+        .order_by(
+            IncidentEvidence.created_at.desc(),
+            IncidentEvidence.id.desc(),
+        )
+        .offset(keep_latest)
+    ).all()
+
+    if old_evidence_ids:
+        db.execute(
+            delete(
+                IncidentEvidence
+            ).where(
+                IncidentEvidence.id.in_(
+                    old_evidence_ids
+                )
+            )
+        )
+
+
+def save_evidence_bytes_to_db(
+    db: Session,
+    incident_id: int,
+    image_bytes: bytes,
+    mime_type: str = "image/jpeg",
+    keep_latest: int = 100,
+) -> int:
+    """
+    Save an already-encoded image directly to PostgreSQL.
+
+    This is the preferred evidence path for browser-side
+    SafeVision inference.
+
+    The browser performs:
+        camera capture
+        annotation
+        JPEG encoding
+
+    The backend only stores the bytes.
+    """
+
+    if not image_bytes:
+        raise ValueError(
+            "Evidence image is empty."
+        )
+
+    evidence = IncidentEvidence(
+        incident_id=incident_id,
+        image_data=image_bytes,
+        mime_type=mime_type,
+    )
+
+    db.add(evidence)
+
+    # Assign evidence.id and created_at.
+    db.flush()
+
+    _prune_old_evidence(
+        db,
+        keep_latest=keep_latest,
+    )
+
+    return evidence.id
+
+
+# ============================================================
+# LEGACY SERVER-SIDE EVIDENCE SUPPORT
+# ============================================================
+#
+# These functions remain so older local ML code does not break.
+#
+# OpenCV is intentionally imported INSIDE encode_evidence().
+# This means the lightweight FastAPI production path does not
+# load OpenCV merely because this module was imported.
+# ============================================================
 
 
 def _clip_box(
@@ -17,27 +101,54 @@ def _clip_box(
         for value in box
     )
 
-    x1 = max(0, min(x1, width - 1))
-    y1 = max(0, min(y1, height - 1))
-    x2 = max(0, min(x2, width - 1))
-    y2 = max(0, min(y2, height - 1))
+    x1 = max(
+        0,
+        min(
+            x1,
+            width - 1,
+        ),
+    )
 
-    return x1, y1, x2, y2
+    y1 = max(
+        0,
+        min(
+            y1,
+            height - 1,
+        ),
+    )
+
+    x2 = max(
+        0,
+        min(
+            x2,
+            width - 1,
+        ),
+    )
+
+    y2 = max(
+        0,
+        min(
+            y2,
+            height - 1,
+        ),
+    )
+
+    return (
+        x1,
+        y1,
+        x2,
+        y2,
+    )
 
 
 def _draw_labeled_box(
-    image: np.ndarray,
+    cv2,
+    image,
     box,
     label: str,
     color: tuple[int, int, int],
     thickness: int = 2,
 ) -> None:
-    """
-    Draw a bounding box with a readable label.
-
-    OpenCV colors use BGR ordering.
-    """
-
     height, width = image.shape[:2]
 
     x1, y1, x2, y2 = _clip_box(
@@ -70,23 +181,36 @@ def _draw_labeled_box(
 
     label_top = max(
         0,
-        y1 - text_height - baseline - 10,
+        y1
+        - text_height
+        - baseline
+        - 10,
     )
 
     label_bottom = max(
-        text_height + baseline + 8,
+        text_height
+        + baseline
+        + 8,
         y1,
     )
 
     label_right = min(
         width - 1,
-        x1 + text_width + 12,
+        x1
+        + text_width
+        + 12,
     )
 
     cv2.rectangle(
         image,
-        (x1, label_top),
-        (label_right, label_bottom),
+        (
+            x1,
+            label_top,
+        ),
+        (
+            label_right,
+            label_bottom,
+        ),
         color,
         -1,
     )
@@ -100,17 +224,24 @@ def _draw_labeled_box(
     cv2.putText(
         image,
         label,
-        (x1 + 6, text_y),
+        (
+            x1 + 6,
+            text_y,
+        ),
         font,
         font_scale,
-        (255, 255, 255),
+        (
+            255,
+            255,
+            255,
+        ),
         font_thickness,
         cv2.LINE_AA,
     )
 
 
 def encode_evidence(
-    frame: np.ndarray,
+    frame,
     box=None,
     *,
     person_box=None,
@@ -120,21 +251,19 @@ def encode_evidence(
     violation_confidence: float | None = None,
 ) -> tuple[bytes, str]:
     """
-    Annotate an incident frame and encode it as JPEG.
+    Legacy OpenCV evidence encoder.
 
-    `box` is kept for backward compatibility with older callers.
-    New code should use `person_box`.
+    This function is retained for older local/server inference
+    code. OpenCV is loaded lazily only if this function is
+    actually called.
     """
+
+    import cv2
 
     annotated = frame.copy()
 
-    # Backward compatibility.
     if person_box is None:
         person_box = box
-
-    # -------------------------------------------------
-    # Draw tracked person in BLUE.
-    # -------------------------------------------------
 
     if person_box is not None:
         if track_id is not None:
@@ -145,17 +274,13 @@ def encode_evidence(
             person_label = "Person"
 
         _draw_labeled_box(
+            cv2,
             annotated,
             person_box,
             person_label,
-            # BGR: blue
             (255, 120, 30),
             thickness=2,
         )
-
-    # -------------------------------------------------
-    # Draw the actual violation object in RED.
-    # -------------------------------------------------
 
     if violation_box is not None:
         label = (
@@ -163,30 +288,30 @@ def encode_evidence(
             or "PPE Violation"
         )
 
-        # Make detector-style labels easier to read.
         label = (
             label
             .replace("_", " ")
             .replace("-", " ")
         )
 
-        if violation_confidence is not None:
+        if (
+            violation_confidence
+            is not None
+        ):
             label = (
                 f"{label} "
                 f"{violation_confidence * 100:.0f}%"
             )
 
         _draw_labeled_box(
+            cv2,
             annotated,
             violation_box,
             label,
-            # BGR: red
             (0, 0, 255),
             thickness=3,
         )
 
-    # If this is an absence-based violation, there may be
-    # no actual negative object detection to localize.
     elif violation_label:
         label = (
             violation_label
@@ -194,7 +319,10 @@ def encode_evidence(
             .replace("-", " ")
         )
 
-        if violation_confidence is not None:
+        if (
+            violation_confidence
+            is not None
+        ):
             label = (
                 f"{label} "
                 f"{violation_confidence * 100:.0f}%"
@@ -211,13 +339,15 @@ def encode_evidence(
             cv2.LINE_AA,
         )
 
-    success, encoded = cv2.imencode(
-        ".jpg",
-        annotated,
-        [
-            cv2.IMWRITE_JPEG_QUALITY,
-            90,
-        ],
+    success, encoded = (
+        cv2.imencode(
+            ".jpg",
+            annotated,
+            [
+                cv2.IMWRITE_JPEG_QUALITY,
+                90,
+            ],
+        )
     )
 
     if not success:
@@ -233,7 +363,7 @@ def encode_evidence(
 
 def save_evidence_to_db(
     db: Session,
-    frame: np.ndarray,
+    frame,
     incident_id: int,
     box=None,
     keep_latest: int = 100,
@@ -245,11 +375,7 @@ def save_evidence_to_db(
     violation_confidence: float | None = None,
 ) -> int:
     """
-    Save annotated JPEG evidence to PostgreSQL.
-
-    Keeps only the latest `keep_latest` evidence rows.
-
-    `box` remains supported so older code/tests don't break.
+    Legacy server-side evidence path.
     """
 
     image_bytes, mime_type = (
@@ -259,48 +385,19 @@ def save_evidence_to_db(
             person_box=person_box,
             track_id=track_id,
             violation_box=violation_box,
-            violation_label=violation_label,
+            violation_label=(
+                violation_label
+            ),
             violation_confidence=(
                 violation_confidence
             ),
         )
     )
 
-    evidence = IncidentEvidence(
+    return save_evidence_bytes_to_db(
+        db=db,
         incident_id=incident_id,
-        image_data=image_bytes,
+        image_bytes=image_bytes,
         mime_type=mime_type,
+        keep_latest=keep_latest,
     )
-
-    db.add(evidence)
-
-    # Assign evidence.id before retention query.
-    db.flush()
-
-    old_evidence_ids = db.scalars(
-        select(
-            IncidentEvidence.id
-        )
-        .order_by(
-            IncidentEvidence
-            .created_at
-            .desc(),
-            IncidentEvidence
-            .id
-            .desc(),
-        )
-        .offset(keep_latest)
-    ).all()
-
-    if old_evidence_ids:
-        db.execute(
-            delete(
-                IncidentEvidence
-            ).where(
-                IncidentEvidence.id.in_(
-                    old_evidence_ids
-                )
-            )
-        )
-
-    return evidence.id

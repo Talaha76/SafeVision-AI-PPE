@@ -14,3 +14,5 @@ ml/weights/*.pt
 ml/evaluation/results/*
 !ml/evaluation/results/.gitkeep
 .idea/
+ml/weights/*.onnx
+runs/

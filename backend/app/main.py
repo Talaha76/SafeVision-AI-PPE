@@ -1,36 +1,112 @@
 from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from app.api import analytics, cameras, health, incidents, model
-from app.core.config import settings
-from app.api.live_detection import router as live_detection_router
-from app.api.upload_detection import router as upload_detection_router
 
-app = FastAPI(title=settings.app_name, version="0.1.0")
+from app.api.analytics import router as analytics_router
+from app.api.browser_incidents import router as browser_incidents_router
+from app.api.cameras import router as cameras_router
+from app.api.health import router as health_router
+from app.api.incidents import router as incidents_router
+from app.api.model import router as model_router
+
+from app.core.config import settings
+
+
+app = FastAPI(
+    title=settings.app_name,
+    version="0.1.0",
+)
+
+
+production_origin = (
+    settings.frontend_origin
+    .rstrip("/")
+)
+
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[settings.frontend_origin],
+
+    # Production frontend, e.g. Netlify.
+    allow_origins=[
+        production_origin,
+    ],
+
+    # Also allow local Vite development.
+    allow_origin_regex=(
+        r"^https?://"
+        r"(localhost|127\.0\.0\.1)"
+        r"(:\d+)?$"
+    ),
+
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-app.include_router(health.router, prefix="/api")
-app.include_router(incidents.router, prefix="/api")
-app.include_router(analytics.router, prefix="/api")
-app.include_router(cameras.router, prefix="/api")
-app.include_router(model.router, prefix="/api")
+
+# ---------------------------------------------------------
+# API ROUTES
+# ---------------------------------------------------------
 
 app.include_router(
-    live_detection_router,
+    health_router,
     prefix="/api",
 )
 
 app.include_router(
-    upload_detection_router,
+    incidents_router,
     prefix="/api",
 )
 
-Path(settings.evidence_dir).mkdir(parents=True, exist_ok=True)
-app.mount("/evidence", StaticFiles(directory=settings.evidence_dir), name="evidence")
+app.include_router(
+    browser_incidents_router,
+    prefix="/api",
+)
+
+app.include_router(
+    analytics_router,
+    prefix="/api",
+)
+
+app.include_router(
+    cameras_router,
+    prefix="/api",
+)
+
+app.include_router(
+    model_router,
+    prefix="/api",
+)
+
+
+# ---------------------------------------------------------
+# EVIDENCE
+# ---------------------------------------------------------
+
+Path(
+    settings.evidence_dir
+).mkdir(
+    parents=True,
+    exist_ok=True,
+)
+
+
+app.mount(
+    "/evidence",
+    StaticFiles(
+        directory=settings.evidence_dir,
+    ),
+    name="evidence",
+)
+
+
+@app.get("/")
+def root():
+    return {
+        "name": settings.app_name,
+        "version": "0.1.0",
+        "docs": "/docs",
+    }

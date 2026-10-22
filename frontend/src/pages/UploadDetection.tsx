@@ -5,6 +5,11 @@ import {
   useState,
 } from "react";
 
+import {
+  ppeDetector,
+  type PPEDetection,
+} from "../services/ppeDetector";
+
 import "./UploadDetection.css";
 
 
@@ -78,8 +83,18 @@ type VideoSummary = {
 };
 
 
+type BrowserTrack = {
+  track_id: number;
+  box: Box;
+  last_seen_frame: number;
+};
+
+
 const VIDEO_SAMPLE_SECONDS = 0.5;
 const EVENT_GAP_SECONDS = 1.25;
+
+const PERSON_TRACK_IOU_THRESHOLD = 0.15;
+const TRACK_MAX_MISSED_FRAMES = 4;
 
 
 function normalizeClassName(
@@ -105,7 +120,6 @@ function missingPpeFromClass(
       no_mask: "mask",
       no_safety_vest: "vest",
       no_vest: "vest",
-      no_gloves: "gloves",
     };
 
   return map[normalized] ?? null;
@@ -213,6 +227,71 @@ function formatEventTime(
 }
 
 
+function boxArea(
+  box: Box
+) {
+  return (
+    Math.max(0, box[2] - box[0])
+    * Math.max(0, box[3] - box[1])
+  );
+}
+
+
+function intersectionArea(
+  a: Box,
+  b: Box
+) {
+  const x1 = Math.max(a[0], b[0]);
+  const y1 = Math.max(a[1], b[1]);
+  const x2 = Math.min(a[2], b[2]);
+  const y2 = Math.min(a[3], b[3]);
+
+  return (
+    Math.max(0, x2 - x1)
+    * Math.max(0, y2 - y1)
+  );
+}
+
+
+function boxIou(
+  a: Box,
+  b: Box
+) {
+  const intersection =
+    intersectionArea(a, b);
+
+  const union =
+    boxArea(a)
+    + boxArea(b)
+    - intersection;
+
+  if (union <= 0) {
+    return 0;
+  }
+
+  return intersection / union;
+}
+
+
+function boxCenterInside(
+  inner: Box,
+  outer: Box
+) {
+  const centerX =
+    (inner[0] + inner[2]) / 2;
+
+  const centerY =
+    (inner[1] + inner[3]) / 2;
+
+  return (
+    centerX >= outer[0]
+    && centerX <= outer[2]
+    && centerY >= outer[1]
+    && centerY <= outer[3]
+  );
+}
+
+
 export default function UploadDetection() {
   const imageRef =
     useRef<HTMLImageElement | null>(null);
@@ -222,12 +301,6 @@ export default function UploadDetection() {
 
   const overlayRef =
     useRef<HTMLCanvasElement | null>(null);
-
-  const captureRef =
-    useRef<HTMLCanvasElement | null>(null);
-
-  const socketRef =
-    useRef<WebSocket | null>(null);
 
   const busyRef =
     useRef(false);
@@ -257,6 +330,20 @@ export default function UploadDetection() {
 
   const completedEventsRef =
     useRef<ViolationEvent[]>([]);
+
+  const browserTracksRef =
+    useRef<Map<number, BrowserTrack>>(
+      new Map()
+    );
+
+  const nextTrackIdRef =
+    useRef(1);
+
+  const videoFrameIndexRef =
+    useRef(0);
+
+  const runIdRef =
+    useRef(0);
 
 
   const [file, setFile] =
@@ -305,18 +392,12 @@ export default function UploadDetection() {
   }
 
 
-  function closeSocket() {
-    const socket = socketRef.current;
+  function resetBrowserTracker() {
+    browserTracksRef.current =
+      new Map<number, BrowserTrack>();
 
-    if (socket) {
-      socket.onopen = null;
-      socket.onmessage = null;
-      socket.onerror = null;
-      socket.onclose = null;
-      socket.close();
-    }
-
-    socketRef.current = null;
+    nextTrackIdRef.current = 1;
+    videoFrameIndexRef.current = 0;
   }
 
 
@@ -333,6 +414,8 @@ export default function UploadDetection() {
     pendingSeekRef.current = false;
     videoDurationRef.current = 0;
 
+    resetBrowserTracker();
+
     setVideoProgress(0);
     setVideoSummary(null);
   }
@@ -343,7 +426,8 @@ export default function UploadDetection() {
     busyRef.current = false;
     pendingSeekRef.current = false;
 
-    closeSocket();
+    runIdRef.current += 1;
+
     setDetecting(false);
   }
 
@@ -480,16 +564,6 @@ export default function UploadDetection() {
 
     ctx.lineWidth = lineWidth;
 
-
-    // ------------------------------------------------------
-    // VIOLATION-FOCUSED OVERLAY
-    //
-    // Compliant PPE detections stay hidden.
-    // Only workers with an explicit missing-PPE fault get
-    // a person/track box, and each fault gets its own red
-    // violation box with the confidence percentage.
-    // ------------------------------------------------------
-
     const violatingPeople =
       new Map<number, Box>();
 
@@ -507,9 +581,6 @@ export default function UploadDetection() {
       }
     );
 
-
-    // Draw one blue person / track box only for workers
-    // who have at least one explicit PPE violation.
     violatingPeople.forEach(
       (box, trackId) => {
         const [x1, y1, x2, y2] = box;
@@ -535,9 +606,6 @@ export default function UploadDetection() {
       }
     );
 
-
-    // Draw every explicit missing-PPE detection in red.
-    // The label keeps the confidence percentage visible.
     data.violations.forEach(
       violation => {
         const [x1, y1, x2, y2] =
@@ -569,6 +637,287 @@ export default function UploadDetection() {
     );
   }
 
+
+  function trackPeople(
+    detections: PPEDetection[],
+    frameIndex: number
+  ): PersonDetection[] {
+    const personCandidates =
+      detections
+        .filter(
+          detection =>
+            normalizeClassName(
+              detection.className
+            ) === "person"
+        )
+        .sort(
+          (a, b) =>
+            b.confidence
+            - a.confidence
+        );
+
+    const usedTrackIds =
+      new Set<number>();
+
+    const people:
+      PersonDetection[] = [];
+
+    for (
+      const candidate
+      of personCandidates
+    ) {
+      const candidateBox:
+        Box = [...candidate.xyxy];
+
+      let bestTrackId:
+        number | null = null;
+
+      let bestIou = 0;
+
+      for (
+        const [
+          trackId,
+          track,
+        ]
+        of browserTracksRef.current.entries()
+      ) {
+        if (
+          usedTrackIds.has(trackId)
+          || frameIndex
+            - track.last_seen_frame
+            > TRACK_MAX_MISSED_FRAMES
+        ) {
+          continue;
+        }
+
+        const overlap =
+          boxIou(
+            candidateBox,
+            track.box
+          );
+
+        if (overlap > bestIou) {
+          bestIou = overlap;
+          bestTrackId = trackId;
+        }
+      }
+
+      let trackId: number;
+
+      if (
+        bestTrackId !== null
+        && bestIou
+          >= PERSON_TRACK_IOU_THRESHOLD
+      ) {
+        trackId = bestTrackId;
+      } else {
+        trackId =
+          nextTrackIdRef.current;
+
+        nextTrackIdRef.current += 1;
+      }
+
+      usedTrackIds.add(trackId);
+
+      browserTracksRef.current.set(
+        trackId,
+        {
+          track_id: trackId,
+          box: candidateBox,
+          last_seen_frame: frameIndex,
+        }
+      );
+
+      people.push({
+        track_id: trackId,
+        confidence:
+          candidate.confidence,
+        box: candidateBox,
+      });
+    }
+
+    for (
+      const [
+        trackId,
+        track,
+      ]
+      of browserTracksRef.current.entries()
+    ) {
+      if (
+        frameIndex
+        - track.last_seen_frame
+        > TRACK_MAX_MISSED_FRAMES
+      ) {
+        browserTracksRef.current.delete(
+          trackId
+        );
+      }
+    }
+
+    return people;
+  }
+
+
+  function findPersonForViolation(
+    violationBox: Box,
+    people: PersonDetection[]
+  ): PersonDetection | null {
+    const containing =
+      people
+        .filter(person =>
+          boxCenterInside(
+            violationBox,
+            person.box
+          )
+        )
+        .sort(
+          (a, b) =>
+            boxArea(a.box)
+            - boxArea(b.box)
+        );
+
+    if (containing.length > 0) {
+      return containing[0];
+    }
+
+    let bestPerson:
+      PersonDetection | null = null;
+
+    let bestOverlapRatio = 0;
+
+    const violationArea =
+      boxArea(violationBox);
+
+    if (violationArea <= 0) {
+      return null;
+    }
+
+    for (const person of people) {
+      const overlapRatio =
+        intersectionArea(
+          violationBox,
+          person.box
+        ) / violationArea;
+
+      if (
+        overlapRatio
+        > bestOverlapRatio
+      ) {
+        bestOverlapRatio =
+          overlapRatio;
+
+        bestPerson = person;
+      }
+    }
+
+    if (bestOverlapRatio >= 0.05) {
+      return bestPerson;
+    }
+
+    return null;
+  }
+
+
+  function buildDetectionResult(
+    rawDetections: PPEDetection[],
+    frameWidth: number,
+    frameHeight: number,
+    frameIndex: number
+  ): DetectionResult {
+    const people =
+      trackPeople(
+        rawDetections,
+        frameIndex
+      );
+
+    const detections:
+      Detection[] =
+      rawDetections.map(
+        detection => ({
+          class_name:
+            detection.className,
+          confidence:
+            detection.confidence,
+          box:
+            [...detection.xyxy] as Box,
+        })
+      );
+
+    const strongestViolation =
+      new Map<
+        string,
+        ViolationDetection
+      >();
+
+    for (
+      const detection
+      of rawDetections
+    ) {
+      const missingPpe =
+        missingPpeFromClass(
+          detection.className
+        );
+
+      if (!missingPpe) {
+        continue;
+      }
+
+      const violationBox:
+        Box = [...detection.xyxy];
+
+      const person =
+        findPersonForViolation(
+          violationBox,
+          people
+        );
+
+      const key =
+        `${person?.track_id ?? "untracked"}`
+        + `:${missingPpe}`;
+
+      const violation:
+        ViolationDetection = {
+          track_id:
+            person?.track_id ?? null,
+          missing_ppe:
+            missingPpe,
+          violation_type:
+            `missing_${missingPpe}`,
+          confidence:
+            detection.confidence,
+          person_box:
+            person?.box ?? null,
+          violation_box:
+            violationBox,
+        };
+
+      const existing =
+        strongestViolation.get(key);
+
+      if (
+        !existing
+        || violation.confidence
+          > existing.confidence
+      ) {
+        strongestViolation.set(
+          key,
+          violation
+        );
+      }
+    }
+
+    return {
+      frame_width: frameWidth,
+      frame_height: frameHeight,
+      people,
+      detections,
+      violations: [
+        ...strongestViolation.values(),
+      ],
+    };
+  }
+
+
   function violationKey(
     violation: ViolationDetection
   ) {
@@ -588,8 +937,6 @@ export default function UploadDetection() {
     const centerY =
       (y1 + y2) / 2;
 
-    // Spatial buckets give unmatched detections a reasonably
-    // stable identity across nearby sampled frames.
     const bucketX = Math.round(
       centerX / 120
     );
@@ -727,6 +1074,8 @@ export default function UploadDetection() {
     busyRef.current = false;
     pendingSeekRef.current = false;
 
+    runIdRef.current += 1;
+
     for (
       const active
       of activeEventsRef.current.values()
@@ -738,17 +1087,10 @@ export default function UploadDetection() {
 
     const events = [
       ...completedEventsRef.current,
-    ]
-      .filter(
-        event =>
-          event.missing_ppe !== "gloves"
-          || event.end_time - event.start_time
-            >= VIDEO_SAMPLE_SECONDS * 0.9
-      )
-      .sort(
-        (a, b) =>
-          a.start_time - b.start_time
-      );
+    ].sort(
+      (a, b) =>
+        a.start_time - b.start_time
+    );
 
     setVideoSummary({
       duration:
@@ -760,48 +1102,56 @@ export default function UploadDetection() {
 
     setVideoProgress(100);
     setDetecting(false);
-
-    closeSocket();
   }
 
 
-  function sendCanvasFrame(
+  function sourceDimensions(
+    source:
+      | HTMLImageElement
+      | HTMLVideoElement
+  ) {
+    if (
+      source instanceof HTMLImageElement
+    ) {
+      return {
+        width: source.naturalWidth,
+        height: source.naturalHeight,
+      };
+    }
+
+    return {
+      width: source.videoWidth,
+      height: source.videoHeight,
+    };
+  }
+
+
+  async function analyzeSource(
     source:
       | HTMLImageElement
       | HTMLVideoElement,
-    timestamp = 0
+    timestamp: number,
+    runId: number
   ) {
-    const captureCanvas =
-      captureRef.current;
-
-    const socket =
-      socketRef.current;
-
     if (
-      !captureCanvas
-      || !socket
-      || socket.readyState
-        !== WebSocket.OPEN
+      !analysisActiveRef.current
+      || runIdRef.current !== runId
       || busyRef.current
-      || !analysisActiveRef.current
     ) {
       return;
     }
 
-    let width = 0;
-    let height = 0;
+    const {
+      width,
+      height,
+    } = sourceDimensions(source);
 
-    if (
-      source instanceof HTMLImageElement
-    ) {
-      width = source.naturalWidth;
-      height = source.naturalHeight;
-    } else {
-      width = source.videoWidth;
-      height = source.videoHeight;
-    }
+    if (width <= 0 || height <= 0) {
+      setError(
+        "Could not read the media dimensions."
+      );
 
-    if (width === 0 || height === 0) {
+      cancelDetection();
       return;
     }
 
@@ -809,48 +1159,89 @@ export default function UploadDetection() {
     pendingTimestampRef.current =
       timestamp;
 
-    captureCanvas.width = width;
-    captureCanvas.height = height;
+    try {
+      const rawDetections =
+        await ppeDetector.detect(
+          source,
+          width,
+          height,
+          0.35,
+          0.45
+        );
 
-    const ctx =
-      captureCanvas.getContext("2d");
+      if (
+        !analysisActiveRef.current
+        || runIdRef.current !== runId
+      ) {
+        return;
+      }
 
-    if (!ctx) {
-      busyRef.current = false;
-      return;
-    }
+      const frameIndex =
+        mediaType === "video"
+          ? videoFrameIndexRef.current++
+          : 0;
 
-    ctx.drawImage(
-      source,
-      0,
-      0,
-      width,
-      height
-    );
+      const data =
+        buildDetectionResult(
+          rawDetections,
+          width,
+          height,
+          frameIndex
+        );
 
-    captureCanvas.toBlob(
-      async (blob) => {
-        if (!blob) {
-          busyRef.current = false;
-          return;
-        }
+      setResult(data);
+      drawResults(data);
 
-        try {
-          const buffer =
-            await blob.arrayBuffer();
+      if (mediaType === "image") {
+        analysisActiveRef.current =
+          false;
 
-          socket.send(buffer);
-        } catch {
-          busyRef.current = false;
+        setDetecting(false);
+        return;
+      }
 
-          setError(
-            "Could not send frame to the detection server."
+      if (mediaType === "video") {
+        processVideoFrame(
+          data,
+          timestamp
+        );
+
+        const nextTimestamp =
+          timestamp
+          + VIDEO_SAMPLE_SECONDS;
+
+        busyRef.current = false;
+
+        if (
+          nextTimestamp
+          < videoDurationRef.current
+        ) {
+          queueVideoFrame(
+            nextTimestamp
           );
+        } else {
+          finishVideoAnalysis();
         }
-      },
-      "image/jpeg",
-      0.82
-    );
+      }
+    } catch (caughtError) {
+      const message =
+        caughtError
+          instanceof Error
+          ? caughtError.message
+          : "Unknown browser inference error.";
+
+      setError(
+        `Browser PPE detection failed: ${message}`
+      );
+
+      cancelDetection();
+    } finally {
+      if (
+        runIdRef.current === runId
+      ) {
+        busyRef.current = false;
+      }
+    }
   }
 
 
@@ -907,9 +1298,10 @@ export default function UploadDetection() {
     ) {
       pendingSeekRef.current = false;
 
-      sendCanvasFrame(
+      void analyzeSource(
         video,
-        target
+        target,
+        runIdRef.current
       );
 
       return;
@@ -920,7 +1312,7 @@ export default function UploadDetection() {
   }
 
 
-  function startDetection() {
+  async function startDetection() {
     if (!file || !mediaType) {
       setError(
         "Select an image or video first."
@@ -935,34 +1327,35 @@ export default function UploadDetection() {
     setError("");
     setResult(null);
 
+    const runId =
+      runIdRef.current + 1;
+
+    runIdRef.current = runId;
+
     analysisActiveRef.current = true;
+    setDetecting(true);
 
-const apiUrl =
-  import.meta.env.VITE_API_URL
-  ?? "http://127.0.0.1:8000/api";
+    try {
+      await ppeDetector.load();
 
-const wsUrl = apiUrl
-  .replace(/^http/, "ws")
-  .replace(/\/$/, "");
-
-const socket = new WebSocket(
-  `${wsUrl}/upload-detection/ws`
-);
-
-    socketRef.current = socket;
-
-
-    socket.onopen = () => {
-      setDetecting(true);
+      if (
+        !analysisActiveRef.current
+        || runIdRef.current !== runId
+      ) {
+        return;
+      }
 
       if (
         mediaType === "image"
         && imageRef.current
       ) {
-        sendCanvasFrame(
+        await analyzeSource(
           imageRef.current,
-          0
+          0,
+          runId
         );
+
+        return;
       }
 
       if (
@@ -985,95 +1378,25 @@ const socket = new WebSocket(
         }
 
         videoRef.current.pause();
+
         videoDurationRef.current =
           duration;
 
         queueVideoFrame(0);
       }
-    };
-
-
-    socket.onmessage = (event) => {
-      busyRef.current = false;
-
-      try {
-        const data:
-          DetectionResult =
-          JSON.parse(event.data);
-
-        if (data.error) {
-          setError(data.error);
-          cancelDetection();
-          return;
-        }
-
-        if (!data.violations) {
-          data.violations = [];
-        }
-
-        setResult(data);
-        drawResults(data);
-
-        if (mediaType === "image") {
-          analysisActiveRef.current = false;
-          setDetecting(false);
-          closeSocket();
-          return;
-        }
-
-        if (mediaType === "video") {
-          const timestamp =
-            pendingTimestampRef.current;
-
-          processVideoFrame(
-            data,
-            timestamp
-          );
-
-          const nextTimestamp =
-            timestamp
-            + VIDEO_SAMPLE_SECONDS;
-
-          if (
-            nextTimestamp
-            < videoDurationRef.current
-          ) {
-            queueVideoFrame(
-              nextTimestamp
-            );
-          } else {
-            finishVideoAnalysis();
-          }
-        }
-      } catch {
-        setError(
-          "Could not read detection response."
-        );
-
-        cancelDetection();
-      }
-    };
-
-
-    socket.onerror = () => {
-      busyRef.current = false;
+    } catch (caughtError) {
+      const message =
+        caughtError
+          instanceof Error
+          ? caughtError.message
+          : "Unknown model loading error.";
 
       setError(
-        "Detection server connection failed."
+        `Could not load the browser PPE model: ${message}`
       );
 
       cancelDetection();
-    };
-
-
-    socket.onclose = () => {
-      busyRef.current = false;
-
-      if (analysisActiveRef.current) {
-        analysisActiveRef.current = false;
-        setDetecting(false);
-      }
-    };
+    }
   }
 
 
@@ -1119,17 +1442,20 @@ const socket = new WebSocket(
 
     pendingSeekRef.current = false;
 
-    sendCanvasFrame(
+    void analyzeSource(
       videoRef.current,
-      pendingTimestampRef.current
+      pendingTimestampRef.current,
+      runIdRef.current
     );
   }
 
 
   useEffect(() => {
     return () => {
-      analysisActiveRef.current = false;
-      closeSocket();
+      analysisActiveRef.current =
+        false;
+
+      runIdRef.current += 1;
 
       if (objectUrlRef.current) {
         URL.revokeObjectURL(
@@ -1172,19 +1498,13 @@ const socket = new WebSocket(
         event.missing_ppe === "mask"
     ).length;
 
-  const glovesEvents =
-    videoEvents.filter(
-      event =>
-        event.missing_ppe === "gloves"
-    ).length;
-
 
   return (
     <section className="upload-page">
       <div className="upload-heading">
         <div>
           <p className="upload-eyebrow">
-            OFFLINE PPE ANALYSIS
+            BROWSER PPE ANALYSIS
           </p>
 
           <h1>Upload Detection</h1>
@@ -1289,12 +1609,6 @@ const socket = new WebSocket(
               className="upload-overlay"
             />
           </section>
-
-
-          <canvas
-            ref={captureRef}
-            style={{ display: "none" }}
-          />
 
 
           <div className="upload-actions">
@@ -1431,9 +1745,8 @@ const socket = new WebSocket(
                   </strong>
 
                   <span>
-                    No hardhat, vest, mask, or
-                    pose-assisted glove violation was
-                    found in this image.
+                    No explicit NO-Hardhat, NO-Safety Vest,
+                    or NO-Mask detection was found in this image.
                   </span>
                 </div>
               ) : (
@@ -1483,13 +1796,13 @@ const socket = new WebSocket(
               detection{positivePpeDetections === 1 ? " was" : "s were"}
               {" "}recognized but intentionally hidden from
               the overlay so attention stays on violations.
-              Upload analysis does not create incidents or
-              modify dashboard analytics. Hardhat, vest, and
-              mask faults come from explicit negative PPE
-              classes. Missing gloves are inferred from
-              visible wrist/hand regions using the pose model
-              when no positive Gloves detection overlaps the
-              hand.
+              Upload analysis runs locally in this browser
+              and does not create incidents or modify dashboard
+              analytics. Hardhat, vest, and mask faults come
+              from explicit negative PPE classes. Gloves can
+              still be recognized when present, but SafeVision
+              does not infer missing gloves because this model
+              has no trained NO-Gloves class.
             </p>
           </section>
         )}
@@ -1508,9 +1821,9 @@ const socket = new WebSocket(
                 <h2>Analysis Complete</h2>
 
                 <p className="upload-results-description">
-                  Repeated detections from the same tracked
-                  worker are combined into one continuous
-                  violation event.
+                  Browser-side tracking combines repeated
+                  detections from the same worker into one
+                  continuous violation event.
                 </p>
               </div>
 
@@ -1590,16 +1903,6 @@ const socket = new WebSocket(
                   {maskEvents}
                 </strong>
               </article>
-
-              <article>
-                <span>
-                  Gloves
-                </span>
-
-                <strong>
-                  {glovesEvents}
-                </strong>
-              </article>
             </div>
 
 
@@ -1630,9 +1933,9 @@ const socket = new WebSocket(
                   </strong>
 
                   <span>
-                    The analyzed samples did not contain
-                    a hardhat, vest, mask, or confirmed
-                    pose-assisted glove violation.
+                    The analyzed samples did not contain an
+                    explicit NO-Hardhat, NO-Safety Vest, or
+                    NO-Mask detection.
                   </span>
                 </div>
               ) : (
@@ -1677,15 +1980,14 @@ const socket = new WebSocket(
 
 
             <p className="analysis-note">
-              The video is sampled every 0.5 seconds. Faults
-              from the same tracked person and PPE type are
-              merged when they remain continuous, preventing
-              one sustained violation from being counted once
-              per frame. Pose-assisted glove events must appear
-              in at least two sampled frames before they are
-              included in the final video report. Upload
-              analysis remains separate from the PostgreSQL
-              incident database.
+              The video is sampled every 0.5 seconds in the
+              browser. A lightweight IoU tracker keeps worker
+              IDs reasonably stable across sampled frames, and
+              repeated faults are merged into continuous events.
+              Upload analysis remains separate from the
+              PostgreSQL incident database. Missing gloves are
+              not inferred because the model has no trained
+              NO-Gloves class.
             </p>
           </section>
         )}
