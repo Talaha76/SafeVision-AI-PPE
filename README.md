@@ -277,7 +277,7 @@ backend/.env
 Example for a local PostgreSQL database:
 
 ```env
-DATABASE_URL=postgresql+psycopg://safevision:safevision@localhost:5432/safevision
+DATABASE_URL=postgresql+psycopg://Password@localhost:5432/safevision
 FRONTEND_ORIGIN=http://localhost:5173
 EVIDENCE_RETENTION_COUNT=100
 INCIDENT_COOLDOWN_SECONDS=30
