@@ -4,7 +4,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     app_name: str = "SafeVision AI"
-    database_url: str = "postgresql+psycopg://safevision:safevision@localhost:5432/safevision"
+    database_url: str
 
     evidence_retention_count: int = 100
 
