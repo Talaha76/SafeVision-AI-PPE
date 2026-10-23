@@ -33,6 +33,7 @@ import {
 import {
   getJson,
   patchJson,
+  postJson,
 } from './api'
 
 import type {
@@ -251,6 +252,11 @@ export default function App() {
     setIncidentStatusUpdating,
   ] = useState<number | null>(null)
 
+  const [
+    clearingData,
+    setClearingData,
+  ] = useState(false)
+
 
   async function load() {
     try {
@@ -330,6 +336,56 @@ export default function App() {
           ? 'dark'
           : 'light'
     )
+  }
+
+
+  async function clearDashboardData() {
+    const confirmed =
+      window.confirm(
+        'Are you sure you want to clear all dashboard data?\n\n'
+        + 'This will remove all incidents that were recorded '
+        + 'through Live Detection, including their stored evidence '
+        + 'and related analytics data.'
+      )
+
+    if (!confirmed) {
+      return
+    }
+
+    try {
+      setClearingData(true)
+      setError('')
+
+      await postJson<
+        { status: string },
+        Record<string, never>
+      >(
+        '/admin/clear-data',
+        {}
+      )
+
+      setIncidentDateFilter('')
+      setSeverityFilter('all')
+      setViolationFilter('all')
+      setStatusFilter('all')
+      setIncidentPage(0)
+      setExpandedIncidentId(null)
+      setEvidenceErrors({})
+      setIncidentSearchResults([])
+      setIncidentSearchCount(0)
+      setIncidentSearchError('')
+
+      await load()
+
+    } catch (e) {
+      setError(
+        e instanceof Error
+          ? e.message
+          : 'Could not clear dashboard data'
+      )
+    } finally {
+      setClearingData(false)
+    }
   }
 
 
@@ -975,12 +1031,33 @@ export default function App() {
             activePage === 'overview'
             && (
 
-              <button
-                className="refreshButton"
-                onClick={load}
-              >
-                ↻ Refresh
-              </button>
+              <>
+                <button
+                  className="refreshButton"
+                  onClick={clearDashboardData}
+                  disabled={clearingData}
+                  style={{
+                    background: '#dc2626',
+                    borderColor: '#dc2626',
+                    color: '#ffffff',
+                    fontWeight: 800,
+                  }}
+                >
+                  {
+                    clearingData
+                      ? 'Clearing...'
+                      : 'Clear Data'
+                  }
+                </button>
+
+                <button
+                  className="refreshButton"
+                  onClick={load}
+                  disabled={clearingData}
+                >
+                  ↻ Refresh
+                </button>
+              </>
 
             )
           }

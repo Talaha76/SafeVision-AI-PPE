@@ -9,9 +9,10 @@ The application performs PPE inference directly in the browser using an ONNX mod
 ## Live Demo
 
 **Frontend:** https://safevision-ai-ppe.netlify.app  
-**Backend:** https://safevision-ai-ppe.onrender.com
 
-The production frontend is deployed on Netlify, the FastAPI backend is deployed on Render, and PostgreSQL is hosted on Neon.
+> 🔴 **IMPORTANT: AFTER USING LIVE DETECTION, PLEASE CLICK THE RED `CLEAR DATA` BUTTON TO REMOVE ALL INCIDENTS RECORDED DURING YOUR SESSION.**
+
+The production frontend is deployed on Netlify, with a FastAPI backend and PostgreSQL database supporting incident storage, analytics, and evidence management.
 
 ---
 

@@ -12,6 +12,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import text
 
 from app.api.analytics import router as analytics_router
 from app.api.browser_incidents import router as browser_incidents_router
@@ -20,6 +21,7 @@ from app.api.health import router as health_router
 from app.api.incidents import router as incidents_router
 from app.api.model import router as model_router
 from app.core.config import settings
+from app.db.session import engine
 
 
 app = FastAPI(
@@ -84,6 +86,28 @@ app.mount(
     ),
     name="evidence",
 )
+
+
+@app.post("/api/admin/clear-data")
+def clear_dashboard_data():
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                """
+                TRUNCATE TABLE
+                    incident_evidence,
+                    incidents,
+                    compliance_observations,
+                    detection_events
+                RESTART IDENTITY CASCADE
+                """
+            )
+        )
+
+    return {
+        "status": "ok",
+        "message": "Dashboard data cleared.",
+    }
 
 
 @app.get("/")
