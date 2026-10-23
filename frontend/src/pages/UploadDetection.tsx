@@ -10,6 +10,10 @@ import {
   type PPEDetection,
 } from "../services/ppeDetector";
 
+import {
+  gloveInference,
+} from "../services/gloveInference";
+
 import "./UploadDetection.css";
 
 
@@ -96,6 +100,8 @@ const EVENT_GAP_SECONDS = 1.25;
 const PERSON_TRACK_IOU_THRESHOLD = 0.15;
 const TRACK_MAX_MISSED_FRAMES = 4;
 
+const GLOVE_VIDEO_CONFIRM_FRAMES = 2;
+
 
 function normalizeClassName(
   value: string
@@ -120,6 +126,7 @@ function missingPpeFromClass(
       no_mask: "mask",
       no_safety_vest: "vest",
       no_vest: "vest",
+      no_gloves: "gloves",
     };
 
   return map[normalized] ?? null;
@@ -331,6 +338,11 @@ export default function UploadDetection() {
   const completedEventsRef =
     useRef<ViolationEvent[]>([]);
 
+  const gloveVideoStreaksRef =
+    useRef<Map<string, number>>(
+      new Map()
+    );
+
   const browserTracksRef =
     useRef<Map<number, BrowserTrack>>(
       new Map()
@@ -409,6 +421,9 @@ export default function UploadDetection() {
       new Map<string, ActiveViolationEvent>();
 
     completedEventsRef.current = [];
+
+    gloveVideoStreaksRef.current =
+      new Map<string, number>();
 
     pendingTimestampRef.current = 0;
     pendingSeekRef.current = false;
@@ -621,13 +636,18 @@ export default function UploadDetection() {
           y2 - y1
         );
 
+        const violationLabel =
+          violation.missing_ppe === "gloves"
+            ? "Missing Gloves (inferred)"
+            : `Missing ${formatPpe(
+                violation.missing_ppe
+              )} ${Math.round(
+                violation.confidence * 100
+              )}%`;
+
         drawLabel(
           ctx,
-          `Missing ${formatPpe(
-            violation.missing_ppe
-          )} ${Math.round(
-            violation.confidence * 100
-          )}%`,
+          violationLabel,
           x1,
           y1,
           "#dc2626",
@@ -977,10 +997,77 @@ export default function UploadDetection() {
       );
     });
 
+    /*
+     * NO-Gloves is inferred rather than trained.
+     * For uploaded video, require it in two
+     * consecutive sampled frames before turning
+     * it into a timeline event.
+     */
+    const currentGloveKeys =
+      new Set<string>();
+
+    const confirmedViolations:
+      ViolationDetection[] = [];
+
+    data.violations.forEach(
+      violation => {
+        if (
+          violation.missing_ppe
+          !== "gloves"
+        ) {
+          confirmedViolations.push(
+            violation
+          );
+          return;
+        }
+
+        const key =
+          violationKey(violation);
+
+        currentGloveKeys.add(key);
+
+        const streak =
+          (
+            gloveVideoStreaksRef.current
+              .get(key)
+            ?? 0
+          ) + 1;
+
+        gloveVideoStreaksRef.current.set(
+          key,
+          streak
+        );
+
+        if (
+          streak
+          >= GLOVE_VIDEO_CONFIRM_FRAMES
+        ) {
+          confirmedViolations.push(
+            violation
+          );
+        }
+      }
+    );
+
+    for (
+      const key
+      of Array.from(
+        gloveVideoStreaksRef.current.keys()
+      )
+    ) {
+      if (
+        !currentGloveKeys.has(key)
+      ) {
+        gloveVideoStreaksRef.current.delete(
+          key
+        );
+      }
+    }
+
     const currentKeys =
       new Set<string>();
 
-    data.violations.forEach(
+    confirmedViolations.forEach(
       violation => {
         const key =
           violationKey(violation);
@@ -1063,7 +1150,6 @@ export default function UploadDetection() {
       );
     }
   }
-
 
   function finishVideoAnalysis() {
     if (!analysisActiveRef.current) {
@@ -1169,6 +1255,40 @@ export default function UploadDetection() {
           0.45
         );
 
+      let inferredGloveDetections:
+        PPEDetection[] = [];
+
+      try {
+        inferredGloveDetections =
+          await gloveInference
+            .inferNoGloves(
+              source,
+              width,
+              height,
+              rawDetections,
+              mediaType === "video"
+                ? "video"
+                : "image",
+              timestamp * 1000
+            );
+      } catch (gloveError) {
+        /*
+         * Keep the trained PPE detector working
+         * even if hand-landmark inference is
+         * unavailable.
+         */
+        console.warn(
+          "[SafeVision] NO-Gloves inference unavailable:",
+          gloveError
+        );
+      }
+
+      const allDetections =
+        [
+          ...rawDetections,
+          ...inferredGloveDetections,
+        ];
+
       if (
         !analysisActiveRef.current
         || runIdRef.current !== runId
@@ -1183,7 +1303,7 @@ export default function UploadDetection() {
 
       const data =
         buildDetectionResult(
-          rawDetections,
+          allDetections,
           width,
           height,
           frameIndex
@@ -1337,6 +1457,18 @@ export default function UploadDetection() {
 
     try {
       await ppeDetector.load();
+
+      try {
+        await gloveInference
+          .startSession(
+            mediaType
+          );
+      } catch (gloveError) {
+        console.warn(
+          "[SafeVision] Hand landmark model could not be prepared. Core PPE detection will continue:",
+          gloveError
+        );
+      }
 
       if (
         !analysisActiveRef.current
@@ -1496,6 +1628,12 @@ export default function UploadDetection() {
     videoEvents.filter(
       event =>
         event.missing_ppe === "mask"
+    ).length;
+
+  const glovesEvents =
+    videoEvents.filter(
+      event =>
+        event.missing_ppe === "gloves"
     ).length;
 
 
@@ -1745,8 +1883,9 @@ export default function UploadDetection() {
                   </strong>
 
                   <span>
-                    No explicit NO-Hardhat, NO-Safety Vest,
-                    or NO-Mask detection was found in this image.
+                    No explicit hardhat, vest, or mask fault
+                    and no inferred visible bare-hand glove fault
+                    was found in this image.
                   </span>
                 </div>
               ) : (
@@ -1779,9 +1918,11 @@ export default function UploadDetection() {
                       </div>
 
                       <strong className="violation-confidence">
-                        {Math.round(
-                          violation.confidence * 100
-                        )}%
+                        {violation.missing_ppe === "gloves"
+                          ? "Inferred"
+                          : `${Math.round(
+                              violation.confidence * 100
+                            )}%`}
                       </strong>
                     </div>
                   )
@@ -1799,10 +1940,13 @@ export default function UploadDetection() {
               Upload analysis runs locally in this browser
               and does not create incidents or modify dashboard
               analytics. Hardhat, vest, and mask faults come
-              from explicit negative PPE classes. Gloves can
-              still be recognized when present, but SafeVision
-              does not infer missing gloves because this model
-              has no trained NO-Gloves class.
+              from explicit trained negative PPE classes.
+              Missing gloves are inferred conservatively only
+              when a visible hand is found inside a worker, the
+              PPE model does not detect Gloves near that hand,
+              and the hand crop contains enough exposed-skin
+              evidence to look bare. Glove results are labeled
+              as inferred rather than shown as YOLO confidence.
             </p>
           </section>
         )}
@@ -1903,6 +2047,16 @@ export default function UploadDetection() {
                   {maskEvents}
                 </strong>
               </article>
+
+              <article>
+                <span>
+                  Gloves
+                </span>
+
+                <strong>
+                  {glovesEvents}
+                </strong>
+              </article>
             </div>
 
 
@@ -1934,8 +2088,9 @@ export default function UploadDetection() {
 
                   <span>
                     The analyzed samples did not contain an
-                    explicit NO-Hardhat, NO-Safety Vest, or
-                    NO-Mask detection.
+                    explicit hardhat, vest, or mask fault or a
+                    confirmed inferred visible bare-hand glove
+                    fault.
                   </span>
                 </div>
               ) : (
@@ -1958,6 +2113,9 @@ export default function UploadDetection() {
                           Missing {formatPpe(
                             event.missing_ppe
                           )}
+                          {event.missing_ppe === "gloves"
+                            ? " (inferred)"
+                            : ""}
                         </strong>
 
                         <span>
@@ -1968,9 +2126,11 @@ export default function UploadDetection() {
                       </div>
 
                       <div className="timeline-confidence">
-                        {Math.round(
-                          event.confidence * 100
-                        )}%
+                        {event.missing_ppe === "gloves"
+                          ? "Inferred"
+                          : `${Math.round(
+                              event.confidence * 100
+                            )}%`}
                       </div>
                     </div>
                   )
@@ -1985,9 +2145,11 @@ export default function UploadDetection() {
               IDs reasonably stable across sampled frames, and
               repeated faults are merged into continuous events.
               Upload analysis remains separate from the
-              PostgreSQL incident database. Missing gloves are
-              not inferred because the model has no trained
-              NO-Gloves class.
+              PostgreSQL incident database. Missing gloves use
+              browser-side hand landmarks plus the existing
+              positive Gloves class, exposed-skin evidence, and
+              two consecutive sampled video frames before
+              becoming a timeline event.
             </p>
           </section>
         )}

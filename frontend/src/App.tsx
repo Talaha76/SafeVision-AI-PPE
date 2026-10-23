@@ -46,12 +46,25 @@ type Theme =
   | 'light'
   | 'dark'
 
+type IncidentStatus =
+  | 'open'
+  | 'reviewing'
+  | 'resolved'
+  | 'dismissed'
+
 
 const API_BASE_URL =
   (
     import.meta.env.VITE_API_URL
     ?? 'http://127.0.0.1:8000/api'
   ).replace(/\/$/, '')
+
+
+const INCIDENT_PAGE_SIZE = 50
+
+type IncidentCountResponse = {
+  count: number
+}
 
 
 function fmt(
@@ -61,6 +74,18 @@ function fmt(
   return value == null
     ? '—'
     : `${value}${suffix}`
+}
+
+
+function formatViolation(
+  value: string
+) {
+  return value
+    .replace(/_/g, ' ')
+    .replace(
+      /\b\w/g,
+      letter => letter.toUpperCase()
+    )
 }
 
 
@@ -88,21 +113,6 @@ function percent(
 }
 
 
-function localDateKey(
-  value: string
-) {
-  const date = new Date(value)
-
-  const year = date.getFullYear()
-  const month = String(
-    date.getMonth() + 1
-  ).padStart(2, '0')
-  const day = String(
-    date.getDate()
-  ).padStart(2, '0')
-
-  return `${year}-${month}-${day}`
-}
 
 
 export default function App() {
@@ -201,6 +211,36 @@ export default function App() {
     setStatusFilter,
   ] = useState('all')
 
+  const [
+    incidentSearchResults,
+    setIncidentSearchResults,
+  ] = useState<Incident[]>([])
+
+  const [
+    incidentSearchCount,
+    setIncidentSearchCount,
+  ] = useState(0)
+
+  const [
+    incidentPage,
+    setIncidentPage,
+  ] = useState(0)
+
+  const [
+    incidentSearchLoading,
+    setIncidentSearchLoading,
+  ] = useState(false)
+
+  const [
+    incidentSearchError,
+    setIncidentSearchError,
+  ] = useState('')
+
+  const [
+    incidentStatusUpdating,
+    setIncidentStatusUpdating,
+  ] = useState<number | null>(null)
+
 
   async function load() {
     try {
@@ -283,17 +323,37 @@ export default function App() {
   }
 
 
-  async function resolveIncident(
-    id: number
+  async function updateIncidentStatus(
+    id: number,
+    status: IncidentStatus
   ) {
-    await patchJson(
-      `/incidents/${id}`,
-      {
-        status: 'resolved',
-      }
-    )
+    try {
+      setIncidentStatusUpdating(id)
+      setError('')
 
-    await load()
+      await patchJson(
+        `/incidents/${id}`,
+        {
+          status,
+        }
+      )
+
+      await load()
+
+      if (filtersActive) {
+        await loadHistoricalIncidents(
+          incidentPage
+        )
+      }
+    } catch (e) {
+      setError(
+        e instanceof Error
+          ? e.message
+          : 'Could not update incident status'
+      )
+    } finally {
+      setIncidentStatusUpdating(null)
+    }
   }
 
 
@@ -458,7 +518,9 @@ export default function App() {
   const statusColors:
     Record<string, string> = {
       open: '#fb923c',
+      reviewing: '#8b5cf6',
       resolved: '#34d399',
+      dismissed: '#94a3b8',
     }
 
 
@@ -556,67 +618,13 @@ export default function App() {
 
 
   /* ======================================================
-     RECENT INCIDENT FILTERS
-     These filters only operate on the 50 incidents already
-     loaded from /incidents?limit=50.
+     INCIDENT HISTORY FILTERS
+
+     The dashboard still loads only the newest 50 incidents.
+     As soon as a filter is active, this section queries
+     the backend so matching incidents can come from the full
+     PostgreSQL history.
      ====================================================== */
-
-  const violationOptions =
-    Array.from(
-      new Set(
-        incidents
-          .map(
-            incident =>
-              incident.violation_type
-          )
-          .filter(Boolean)
-      )
-    ).sort(
-      (a, b) =>
-        a.localeCompare(b)
-    )
-
-
-  const filteredIncidents =
-    incidents.filter(
-      incident => {
-        const matchesDate =
-          !incidentDateFilter
-          || localDateKey(
-            incident.detected_at
-          ) === incidentDateFilter
-
-        const matchesSeverity =
-          severityFilter === 'all'
-          || incident
-            .severity
-            .toLowerCase()
-            === severityFilter
-
-        const matchesViolation =
-          violationFilter === 'all'
-          || incident
-            .violation_type
-            .toLowerCase()
-            === violationFilter
-              .toLowerCase()
-
-        const matchesStatus =
-          statusFilter === 'all'
-          || incident
-            .status
-            .toLowerCase()
-            === statusFilter
-
-        return (
-          matchesDate
-          && matchesSeverity
-          && matchesViolation
-          && matchesStatus
-        )
-      }
-    )
-
 
   const filtersActive =
     incidentDateFilter !== ''
@@ -625,11 +633,212 @@ export default function App() {
     || statusFilter !== 'all'
 
 
+  const violationOptions =
+    Array.from(
+      new Set([
+        'hardhat',
+        'vest',
+        'mask',
+        'gloves',
+        ...incidents.map(
+          incident =>
+            incident.violation_type
+        ),
+        ...incidentSearchResults.map(
+          incident =>
+            incident.violation_type
+        ),
+      ].filter(Boolean))
+    ).sort(
+      (a, b) =>
+        a.localeCompare(b)
+    )
+
+
+  function buildIncidentFilterParams() {
+    const params =
+      new URLSearchParams()
+
+    if (severityFilter !== 'all') {
+      params.set(
+        'severity',
+        severityFilter
+      )
+    }
+
+    if (violationFilter !== 'all') {
+      params.set(
+        'violation_type',
+        violationFilter
+      )
+    }
+
+    if (statusFilter !== 'all') {
+      params.set(
+        'status',
+        statusFilter
+      )
+    }
+
+    if (incidentDateFilter) {
+      const start =
+        new Date(
+          `${incidentDateFilter}T00:00:00`
+        )
+
+      const end =
+        new Date(
+          `${incidentDateFilter}T23:59:59.999`
+        )
+
+      params.set(
+        'start',
+        start.toISOString()
+      )
+
+      params.set(
+        'end',
+        end.toISOString()
+      )
+    }
+
+    return params
+  }
+
+
+  async function loadHistoricalIncidents(
+    page: number
+  ) {
+    if (!filtersActive) {
+      setIncidentSearchResults([])
+      setIncidentSearchCount(0)
+      setIncidentSearchError('')
+      return
+    }
+
+    setIncidentSearchLoading(true)
+    setIncidentSearchError('')
+
+    try {
+      const baseParams =
+        buildIncidentFilterParams()
+
+      const pageParams =
+        new URLSearchParams(
+          baseParams
+        )
+
+      pageParams.set(
+        'limit',
+        String(INCIDENT_PAGE_SIZE)
+      )
+
+      pageParams.set(
+        'offset',
+        String(
+          page * INCIDENT_PAGE_SIZE
+        )
+      )
+
+      const [
+        rows,
+        countResult,
+      ] =
+        await Promise.all([
+          getJson<Incident[]>(
+            `/incidents?${pageParams.toString()}`
+          ),
+
+          getJson<IncidentCountResponse>(
+            `/incidents/count?${baseParams.toString()}`
+          ),
+        ])
+
+      setIncidentSearchResults(
+        rows
+      )
+
+      setIncidentSearchCount(
+        countResult.count
+      )
+
+      setExpandedIncidentId(null)
+
+    } catch (e) {
+      setIncidentSearchError(
+        e instanceof Error
+          ? e.message
+          : 'Failed to load incident history'
+      )
+    } finally {
+      setIncidentSearchLoading(false)
+    }
+  }
+
+
+  useEffect(() => {
+    if (!filtersActive) {
+      setIncidentSearchResults([])
+      setIncidentSearchCount(0)
+      setIncidentSearchError('')
+      setIncidentSearchLoading(false)
+      setIncidentPage(0)
+      return
+    }
+
+    const timer =
+      window.setTimeout(
+        () => {
+          void loadHistoricalIncidents(
+            incidentPage
+          )
+        },
+        250
+      )
+
+    return () => {
+      window.clearTimeout(timer)
+    }
+  }, [
+    incidentDateFilter,
+    severityFilter,
+    violationFilter,
+    statusFilter,
+    incidentPage,
+  ])
+
+
+  const displayedIncidents =
+    filtersActive
+      ? incidentSearchResults
+      : incidents
+
+
+  const displayedIncidentTotal =
+    filtersActive
+      ? incidentSearchCount
+      : incidents.length
+
+
+  const incidentPageCount =
+    filtersActive
+      ? Math.max(
+          1,
+          Math.ceil(
+            incidentSearchCount
+            / INCIDENT_PAGE_SIZE
+          )
+        )
+      : 1
+
+
   function clearIncidentFilters() {
     setIncidentDateFilter('')
     setSeverityFilter('all')
     setViolationFilter('all')
     setStatusFilter('all')
+    setIncidentPage(0)
+    setExpandedIncidentId(null)
   }
 
 
@@ -1940,25 +2149,29 @@ export default function App() {
                             </h2>
 
                             <p className="panelDescription">
-                              Latest 50 detected PPE
-                              safety incidents.
+                              Latest 50 incidents by default.
+                              Filters query the full incident
+                              history.
                             </p>
 
                           </div>
 
                           <span className="recordCount">
-                            {filteredIncidents.length}
+                            {displayedIncidents.length}
                             {' / '}
-                            {incidents.length}
+                            {displayedIncidentTotal}
                           </span>
 
                         </div>
 
 
                         <p className="incidentHelp">
-                          Select an incident ID to
-                          inspect its evidence snapshot,
-                          or filter the latest 50 records below.
+                          Select an incident ID to inspect
+                          its evidence. Without filters this
+                          table shows the newest 50 incidents.
+                          Use the filters to query all stored
+                          incident records, including older
+                          resolved incidents.
                         </p>
 
 
@@ -1974,11 +2187,12 @@ export default function App() {
                               className="incidentDateInput"
                               type="date"
                               value={incidentDateFilter}
-                              onChange={event =>
+                              onChange={event => {
                                 setIncidentDateFilter(
                                   event.target.value
                                 )
-                              }
+                                setIncidentPage(0)
+                              }}
                               aria-label="Filter recent incidents by date"
                             />
 
@@ -1994,11 +2208,12 @@ export default function App() {
                             <select
                               className="incidentFilterSelect"
                               value={severityFilter}
-                              onChange={event =>
+                              onChange={event => {
                                 setSeverityFilter(
                                   event.target.value
                                 )
-                              }
+                                setIncidentPage(0)
+                              }}
                             >
                               <option value="all">
                                 All severities
@@ -2026,11 +2241,12 @@ export default function App() {
                             <select
                               className="incidentFilterSelect"
                               value={violationFilter}
-                              onChange={event =>
+                              onChange={event => {
                                 setViolationFilter(
                                   event.target.value
                                 )
-                              }
+                                setIncidentPage(0)
+                              }}
                             >
                               <option value="all">
                                 All violations
@@ -2044,7 +2260,9 @@ export default function App() {
                                       key={violation}
                                       value={violation}
                                     >
-                                      {violation}
+                                      {formatViolation(
+                                        violation
+                                      )}
                                     </option>
 
                                   )
@@ -2064,11 +2282,12 @@ export default function App() {
                             <select
                               className="incidentFilterSelect"
                               value={statusFilter}
-                              onChange={event =>
+                              onChange={event => {
                                 setStatusFilter(
                                   event.target.value
                                 )
-                              }
+                                setIncidentPage(0)
+                              }}
                             >
                               <option value="all">
                                 All statuses
@@ -2081,6 +2300,9 @@ export default function App() {
                               </option>
                               <option value="resolved">
                                 Resolved
+                              </option>
+                              <option value="dismissed">
+                                Dismissed
                               </option>
                             </select>
 
@@ -2104,19 +2326,37 @@ export default function App() {
                         <div className="incidentFilterSummary">
 
                           <span>
-                            Showing
-                            {' '}
-                            <strong>
-                              {filteredIncidents.length}
-                            </strong>
-                            {' '}
-                            of
-                            {' '}
-                            <strong>
-                              {incidents.length}
-                            </strong>
-                            {' '}
-                            recent incidents
+                            {
+                              filtersActive
+                                ? (
+                                  <>
+                                    Showing
+                                    {' '}
+                                    <strong>
+                                      {displayedIncidents.length}
+                                    </strong>
+                                    {' '}
+                                    of
+                                    {' '}
+                                    <strong>
+                                      {displayedIncidentTotal}
+                                    </strong>
+                                    {' '}
+                                    matching historical incidents
+                                  </>
+                                )
+                                : (
+                                  <>
+                                    Showing the newest
+                                    {' '}
+                                    <strong>
+                                      {incidents.length}
+                                    </strong>
+                                    {' '}
+                                    incidents
+                                  </>
+                                )
+                            }
                           </span>
 
                           {
@@ -2124,7 +2364,7 @@ export default function App() {
                             && (
 
                               <span className="filtersApplied">
-                                Filters applied
+                                Full-history filters
                               </span>
 
                             )
@@ -2143,7 +2383,6 @@ export default function App() {
                                 <th>Time</th>
                                 <th>Violation</th>
                                 <th>Severity</th>
-                                <th>Track</th>
                                 <th>Confidence</th>
                                 <th>Status</th>
                                 <th>Action</th>
@@ -2154,13 +2393,63 @@ export default function App() {
                             <tbody>
 
                               {
-                                filteredIncidents.length === 0
+                                filtersActive
+                                && incidentSearchLoading
                                 && (
 
                                   <tr>
 
                                     <td
-                                      colSpan={8}
+                                      colSpan={7}
+                                      className="incidentEmptyState"
+                                    >
+                                      <strong>
+                                        Loading incident history…
+                                      </strong>
+                                    </td>
+
+                                  </tr>
+
+                                )
+                              }
+
+
+                              {
+                                filtersActive
+                                && incidentSearchError
+                                && !incidentSearchLoading
+                                && (
+
+                                  <tr>
+
+                                    <td
+                                      colSpan={7}
+                                      className="incidentEmptyState"
+                                    >
+                                      <strong>
+                                        Could not load historical incidents
+                                      </strong>
+
+                                      <span>
+                                        {incidentSearchError}
+                                      </span>
+                                    </td>
+
+                                  </tr>
+
+                                )
+                              }
+
+
+                              {
+                                !incidentSearchLoading
+                                && displayedIncidents.length === 0
+                                && (
+
+                                  <tr>
+
+                                    <td
+                                      colSpan={7}
                                       className="incidentEmptyState"
                                     >
 
@@ -2182,7 +2471,9 @@ export default function App() {
 
 
                               {
-                                filteredIncidents.map(
+                                !incidentSearchLoading
+                                && !incidentSearchError
+                                && displayedIncidents.map(
                                   incident => {
 
                                     const isExpanded =
@@ -2237,8 +2528,10 @@ export default function App() {
                                           <td>
                                             <strong className="violationText">
                                               {
-                                                incident
-                                                  .violation_type
+                                                formatViolation(
+                                                  incident
+                                                    .violation_type
+                                                )
                                               }
                                             </strong>
                                           </td>
@@ -2259,13 +2552,6 @@ export default function App() {
                                                 incident
                                                   .severity
                                               }
-                                            </span>
-                                          </td>
-
-
-                                          <td>
-                                            <span className="trackBadge">
-                                              #{incident.track_id}
                                             </span>
                                           </td>
 
@@ -2303,31 +2589,44 @@ export default function App() {
 
                                           <td>
 
-                                            {
-                                              incident.status
-                                              !== 'resolved'
-                                                ? (
+                                            <select
+                                              className="incidentFilterSelect"
+                                              value={
+                                                incident.status
+                                              }
+                                              disabled={
+                                                incidentStatusUpdating
+                                                === incident.id
+                                              }
+                                              onChange={event => {
+                                                const nextStatus =
+                                                  event.target.value as IncidentStatus
 
-                                                  <button
-                                                    className="resolveButton"
-                                                    onClick={() =>
-                                                      resolveIncident(
-                                                        incident.id
-                                                      )
-                                                    }
-                                                  >
-                                                    Resolve
-                                                  </button>
-
+                                                void updateIncidentStatus(
+                                                  incident.id,
+                                                  nextStatus
                                                 )
-                                                : (
-
-                                                  <span className="resolvedText">
-                                                    Completed
-                                                  </span>
-
-                                                )
-                                            }
+                                              }}
+                                              aria-label={
+                                                `Change status for incident #${incident.id}`
+                                              }
+                                              style={{
+                                                minWidth: '128px',
+                                              }}
+                                            >
+                                              <option value="open">
+                                                Open
+                                              </option>
+                                              <option value="reviewing">
+                                                Reviewing
+                                              </option>
+                                              <option value="resolved">
+                                                Resolved
+                                              </option>
+                                              <option value="dismissed">
+                                                Dismissed
+                                              </option>
+                                            </select>
 
                                           </td>
 
@@ -2340,7 +2639,7 @@ export default function App() {
 
                                             <tr className="evidenceRow">
 
-                                              <td colSpan={8}>
+                                              <td colSpan={7}>
 
                                                 <div className="evidencePanel">
 
@@ -2438,8 +2737,10 @@ export default function App() {
 
                                                       <strong>
                                                         {
-                                                          incident
-                                                            .violation_type
+                                                          formatViolation(
+                                                            incident
+                                                              .violation_type
+                                                          )
                                                         }
                                                       </strong>
                                                     </div>
@@ -2506,6 +2807,74 @@ export default function App() {
                           </table>
 
                         </div>
+
+
+                        {
+                          filtersActive
+                          && incidentSearchCount > 0
+                          && (
+
+                            <div className="incidentFilterSummary">
+
+                              <button
+                                type="button"
+                                className="clearIncidentFilters"
+                                onClick={() =>
+                                  setIncidentPage(
+                                    current =>
+                                      Math.max(
+                                        0,
+                                        current - 1
+                                      )
+                                  )
+                                }
+                                disabled={
+                                  incidentPage === 0
+                                  || incidentSearchLoading
+                                }
+                              >
+                                ← Previous
+                              </button>
+
+                              <span>
+                                Page
+                                {' '}
+                                <strong>
+                                  {incidentPage + 1}
+                                </strong>
+                                {' '}
+                                of
+                                {' '}
+                                <strong>
+                                  {incidentPageCount}
+                                </strong>
+                              </span>
+
+                              <button
+                                type="button"
+                                className="clearIncidentFilters"
+                                onClick={() =>
+                                  setIncidentPage(
+                                    current =>
+                                      Math.min(
+                                        incidentPageCount - 1,
+                                        current + 1
+                                      )
+                                  )
+                                }
+                                disabled={
+                                  incidentPage + 1
+                                    >= incidentPageCount
+                                  || incidentSearchLoading
+                                }
+                              >
+                                Next →
+                              </button>
+
+                            </div>
+
+                          )
+                        }
 
                       </section>
 

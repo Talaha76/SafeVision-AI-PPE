@@ -25,18 +25,19 @@ from app.services.incident_service import (
     create_incident_if_new,
 )
 
+SEVERITY_BY_PPE = {
+    "hardhat": "high",
+    "vest": "high",
+    "mask": "medium",
+    "gloves": "medium",
+}
+
 
 router = APIRouter(
     prefix="/browser-incidents",
     tags=["browser-incidents"],
 )
 
-
-SEVERITY_BY_PPE = {
-    "hardhat": "high",
-    "vest": "high",
-    "mask": "medium",
-}
 
 
 MAX_EVIDENCE_BYTES = (
@@ -120,6 +121,24 @@ def normalize_missing_ppe(
 
         "missing_mask":
             "mask",
+
+        "gloves":
+            "gloves",
+
+        "glove":
+            "gloves",
+
+        "no_gloves":
+            "gloves",
+
+        "no_glove":
+            "gloves",
+
+        "missing_gloves":
+            "gloves",
+
+        "missing_glove":
+            "gloves",
     }
 
     result = aliases.get(
@@ -131,7 +150,7 @@ def normalize_missing_ppe(
             status_code=422,
             detail=(
                 "Expected hardhat, "
-                "vest, or mask."
+                "vest, mask, or gloves."
             ),
         )
 
@@ -341,8 +360,6 @@ def create_browser_incident(
             )
         )
 
-        # Make certain the incident
-        # has an assigned primary key.
         db.flush()
 
         save_evidence_bytes_to_db(
@@ -355,8 +372,6 @@ def create_browser_incident(
 
         evidence_saved = True
 
-    # Safe whether the incident service
-    # already flushed/committed or not.
     db.commit()
 
     db.refresh(

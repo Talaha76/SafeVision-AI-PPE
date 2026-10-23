@@ -1,4 +1,6 @@
-import { useState } from 'react'
+import {
+  useState,
+} from 'react'
 import type { FormEvent } from 'react'
 
 import { getJson } from './api'
@@ -10,6 +12,18 @@ const API_BASE_URL =
     import.meta.env.VITE_API_URL
     ?? 'http://127.0.0.1:8000/api'
   ).replace(/\/$/, '')
+
+
+function formatViolation(
+  value: string
+) {
+  return value
+    .replace(/_/g, ' ')
+    .replace(
+      /\b\w/g,
+      letter => letter.toUpperCase()
+    )
+}
 
 
 export default function IncidentLookup() {
@@ -39,8 +53,8 @@ export default function IncidentLookup() {
     const id = Number(incidentId)
 
     if (
-      !Number.isInteger(id) ||
-      id <= 0
+      !Number.isInteger(id)
+      || id <= 0
     ) {
       setError(
         'Enter a valid incident ID.'
@@ -224,9 +238,9 @@ export default function IncidentLookup() {
               </span>
 
               <strong>
-                {
+                {formatViolation(
                   incident.violation_type
-                }
+                )}
               </strong>
             </div>
 
@@ -237,9 +251,10 @@ export default function IncidentLookup() {
               </span>
 
               <strong>
-                {
-                  incident.severity
-                }
+                {incident.severity
+                  .charAt(0)
+                  .toUpperCase()
+                  + incident.severity.slice(1)}
               </strong>
             </div>
 
@@ -278,7 +293,10 @@ export default function IncidentLookup() {
               </span>
 
               <strong>
-                {incident.status}
+                {incident.status
+                  .charAt(0)
+                  .toUpperCase()
+                  + incident.status.slice(1)}
               </strong>
             </div>
 

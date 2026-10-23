@@ -57,16 +57,12 @@ def normalize_violation_type(
     the four PPE names used by dashboard charts.
 
     Examples:
-
     hardhat
         -> hardhat
-
     NO-Hardhat
         -> hardhat
-
     missing_hardhat
         -> hardhat
-
     NO-Safety Vest
         -> vest
     """
@@ -234,10 +230,9 @@ def dashboard_charts(
 ):
     """
     Return data for:
-
     1. Violations by PPE type
     2. PPE violations by day
-    3. Open vs resolved incidents
+    3. Incident status distribution
     4. Severity distribution
     """
 
@@ -377,7 +372,7 @@ def dashboard_charts(
 
 
     # ========================================================
-    # 3. OPEN VS RESOLVED
+    # 3. INCIDENT STATUS DISTRIBUTION
     # ========================================================
 
     status_rows = db.execute(
@@ -391,7 +386,9 @@ def dashboard_charts(
             Incident.status.in_(
                 [
                     "open",
+                    "reviewing",
                     "resolved",
+                    "dismissed",
                 ]
             )
         )
@@ -403,15 +400,22 @@ def dashboard_charts(
 
     status_counts = {
         "open": 0,
+        "reviewing": 0,
         "resolved": 0,
+        "dismissed": 0,
     }
 
 
     for row in status_rows:
 
-        if row.status in status_counts:
+        status = (
+            row.status
+            or "open"
+        ).lower()
+
+        if status in status_counts:
             status_counts[
-                row.status
+                status
             ] = row.count
 
 
@@ -424,10 +428,24 @@ def dashboard_charts(
                 ],
         },
         {
+            "status": "Reviewing",
+            "count":
+                status_counts[
+                    "reviewing"
+                ],
+        },
+        {
             "status": "Resolved",
             "count":
                 status_counts[
                     "resolved"
+                ],
+        },
+        {
+            "status": "Dismissed",
+            "count":
+                status_counts[
+                    "dismissed"
                 ],
         },
     ]

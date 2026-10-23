@@ -9,6 +9,10 @@ import {
   type PPEDetection as BrowserPPEDetection,
 } from "../services/ppeDetector";
 
+import {
+  gloveInference,
+} from "../services/gloveInference";
+
 import "./LiveDetection.css";
 
 
@@ -54,7 +58,8 @@ type BrowserTrack = {
 type MissingPpe =
   | "hardhat"
   | "vest"
-  | "mask";
+  | "mask"
+  | "gloves";
 
 
 type FrameViolation = {
@@ -62,6 +67,13 @@ type FrameViolation = {
   trackId: number;
   missingPpe: MissingPpe;
   confidence: number;
+  personBox: Box;
+};
+
+
+type RecentIncidentRegion = {
+  box: Box;
+  timestamp: number;
 };
 
 
@@ -76,17 +88,29 @@ const DETECTION_INTERVAL_MS =
 
 
 const TRACK_IOU_THRESHOLD =
-  0.18;
+  0.12;
 
 const MAX_MISSED_FRAMES =
-  4;
+  10;
+
+const TRACK_CENTER_DISTANCE_THRESHOLD =
+  0.35;
+
+const TRACK_MIN_AREA_RATIO =
+  0.50;
 
 
 const INCIDENT_CONFIRM_FRAMES =
-  2;
+  3;
+
+const INCIDENT_CLEAR_FRAMES =
+  4;
 
 const INCIDENT_COOLDOWN_MS =
-  30_000;
+  60_000;
+
+const REGION_COOLDOWN_MS =
+  90_000;
 
 
 /*
@@ -105,13 +129,10 @@ const EVIDENCE_JPEG_QUALITY =
 
 const DISPLAY_PPE_CLASSES =
   new Set([
-    "hardhat",
-    "vest",
-    "gloves",
-    "mask",
     "no_hardhat",
     "no_vest",
     "no_mask",
+    "no_gloves",
   ]);
 
 
@@ -203,6 +224,62 @@ function calculateIoU(
 }
 
 
+function normalizedCenterDistance(
+  a: Box,
+  b: Box,
+): number {
+  const aCenterX = (a[0] + a[2]) / 2;
+  const aCenterY = (a[1] + a[3]) / 2;
+  const bCenterX = (b[0] + b[2]) / 2;
+  const bCenterY = (b[1] + b[3]) / 2;
+
+  const normalizerX = Math.max(
+    1,
+    (a[2] - a[0] + b[2] - b[0]) / 2,
+  );
+
+  const normalizerY = Math.max(
+    1,
+    (a[3] - a[1] + b[3] - b[1]) / 2,
+  );
+
+  const dx = (aCenterX - bCenterX) / normalizerX;
+  const dy = (aCenterY - bCenterY) / normalizerY;
+
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+
+function areaRatio(
+  a: Box,
+  b: Box,
+): number {
+  const areaA = Math.max(0, a[2] - a[0]) * Math.max(0, a[3] - a[1]);
+  const areaB = Math.max(0, b[2] - b[0]) * Math.max(0, b[3] - b[1]);
+
+  if (areaA <= 0 || areaB <= 0) {
+    return 0;
+  }
+
+  return Math.min(areaA, areaB) / Math.max(areaA, areaB);
+}
+
+
+function boxesLikelySamePerson(
+  a: Box,
+  b: Box,
+): boolean {
+  if (calculateIoU(a, b) >= 0.20) {
+    return true;
+  }
+
+  return (
+    normalizedCenterDistance(a, b) <= TRACK_CENTER_DISTANCE_THRESHOLD
+    && areaRatio(a, b) >= TRACK_MIN_AREA_RATIO
+  );
+}
+
+
 function smoothBox(
   previous: Box,
   current: Box,
@@ -238,22 +315,6 @@ function smoothBox(
 }
 
 
-function isViolationClass(
-  className: string,
-): boolean {
-  return (
-    className ===
-      "no_hardhat"
-    ||
-    className ===
-      "no_vest"
-    ||
-    className ===
-      "no_mask"
-  );
-}
-
-
 function missingPpeFromClass(
   className: string,
 ): MissingPpe | null {
@@ -266,6 +327,9 @@ function missingPpeFromClass(
 
     case "no_mask":
       return "mask";
+
+    case "no_gloves":
+      return "gloves";
 
     default:
       return null;
@@ -437,6 +501,33 @@ export default function LiveDetection() {
     );
 
 
+  const incidentLatchedRef =
+    useRef<
+      Set<string>
+    >(
+      new Set(),
+    );
+
+
+  const inactiveViolationFramesRef =
+    useRef<
+      Map<string, number>
+    >(
+      new Map(),
+    );
+
+
+  const recentIncidentRegionsRef =
+    useRef<
+      Map<
+        MissingPpe,
+        RecentIncidentRegion[]
+      >
+    >(
+      new Map(),
+    );
+
+
   const [
     cameraOn,
     setCameraOn,
@@ -518,6 +609,21 @@ export default function LiveDetection() {
 
 
     incidentInFlightRef
+      .current
+      .clear();
+
+
+    incidentLatchedRef
+      .current
+      .clear();
+
+
+    inactiveViolationFramesRef
+      .current
+      .clear();
+
+
+    recentIncidentRegionsRef
       .current
       .clear();
 
@@ -641,59 +747,35 @@ export default function LiveDetection() {
   ): PersonDetection[] {
     const existingTracks =
       Array.from(
-        tracksRef.current
-          .values(),
+        tracksRef.current.values(),
       );
-
 
     const usedTrackIds =
       new Set<number>();
 
-
     const currentTrackIds =
       new Set<number>();
 
-
     const sortedDetections =
-      [
-        ...personDetections,
-      ].sort(
+      [...personDetections].sort(
         (a, b) =>
-          b.confidence
-          - a.confidence,
+          b.confidence - a.confidence,
       );
 
-
     const output:
-      PersonDetection[] =
-      [];
+      PersonDetection[] = [];
 
-
-    for (
-      const detection
-      of sortedDetections
-    ) {
+    for (const detection of sortedDetections) {
       let bestTrack:
-        BrowserTrack | null =
-        null;
+        BrowserTrack | null = null;
 
+      let bestScore =
+        Number.NEGATIVE_INFINITY;
 
-      let bestIoU =
-        0;
-
-
-      for (
-        const track
-        of existingTracks
-      ) {
-        if (
-          usedTrackIds.has(
-            track.id,
-          )
-        ) {
+      for (const track of existingTracks) {
+        if (usedTrackIds.has(track.id)) {
           continue;
         }
-
 
         const overlap =
           calculateIoU(
@@ -701,169 +783,110 @@ export default function LiveDetection() {
             detection.xyxy,
           );
 
+        const centerDistance =
+          normalizedCenterDistance(
+            track.box,
+            detection.xyxy,
+          );
 
-        if (
-          overlap
-          > bestIoU
-        ) {
-          bestIoU =
-            overlap;
+        const sizeSimilarity =
+          areaRatio(
+            track.box,
+            detection.xyxy,
+          );
 
-          bestTrack =
-            track;
+        const plausibleMatch =
+          overlap >= TRACK_IOU_THRESHOLD
+          || (
+            centerDistance <= TRACK_CENTER_DISTANCE_THRESHOLD
+            && sizeSimilarity >= TRACK_MIN_AREA_RATIO
+          );
+
+        if (!plausibleMatch) {
+          continue;
+        }
+
+        const score =
+          overlap * 2
+          + Math.max(0, 1 - centerDistance) * 0.5
+          + sizeSimilarity * 0.25;
+
+        if (score > bestScore) {
+          bestScore = score;
+          bestTrack = track;
         }
       }
 
-
-      if (
-        bestTrack
-        &&
-        bestIoU
-          >= TRACK_IOU_THRESHOLD
-      ) {
+      if (bestTrack) {
         const updatedBox =
           smoothBox(
             bestTrack.box,
             detection.xyxy,
           );
 
-
         const updatedTrack:
           BrowserTrack = {
-            id:
-              bestTrack.id,
-
-            box:
-              updatedBox,
-
-            confidence:
-              detection
-                .confidence,
-
-            missedFrames:
-              0,
+            id: bestTrack.id,
+            box: updatedBox,
+            confidence: detection.confidence,
+            missedFrames: 0,
           };
-
 
         tracksRef.current.set(
           updatedTrack.id,
           updatedTrack,
         );
 
-
-        usedTrackIds.add(
-          updatedTrack.id,
-        );
-
-
-        currentTrackIds.add(
-          updatedTrack.id,
-        );
-
+        usedTrackIds.add(updatedTrack.id);
+        currentTrackIds.add(updatedTrack.id);
 
         output.push({
-          track_id:
-            updatedTrack.id,
-
-          confidence:
-            updatedTrack
-              .confidence,
-
-          box:
-            updatedTrack.box,
+          track_id: updatedTrack.id,
+          confidence: updatedTrack.confidence,
+          box: updatedTrack.box,
         });
-
 
         continue;
       }
 
-
       const newTrackId =
-        nextTrackIdRef
-          .current++;
-
+        nextTrackIdRef.current++;
 
       const newTrack:
         BrowserTrack = {
-          id:
-            newTrackId,
-
-          box:
-            detection.xyxy,
-
-          confidence:
-            detection
-              .confidence,
-
-          missedFrames:
-            0,
+          id: newTrackId,
+          box: detection.xyxy,
+          confidence: detection.confidence,
+          missedFrames: 0,
         };
-
 
       tracksRef.current.set(
         newTrackId,
         newTrack,
       );
 
-
-      usedTrackIds.add(
-        newTrackId,
-      );
-
-
-      currentTrackIds.add(
-        newTrackId,
-      );
-
+      usedTrackIds.add(newTrackId);
+      currentTrackIds.add(newTrackId);
 
       output.push({
-        track_id:
-          newTrackId,
-
-        confidence:
-          detection
-            .confidence,
-
-        box:
-          detection
-            .xyxy,
+        track_id: newTrackId,
+        confidence: detection.confidence,
+        box: detection.xyxy,
       });
     }
 
-
-    for (
-      const track
-      of Array.from(
-        tracksRef.current
-          .values(),
-      )
-    ) {
-      if (
-        currentTrackIds.has(
-          track.id,
-        )
-      ) {
+    for (const track of Array.from(tracksRef.current.values())) {
+      if (currentTrackIds.has(track.id)) {
         continue;
       }
-
 
       const missedFrames =
-        track.missedFrames
-        + 1;
+        track.missedFrames + 1;
 
-
-      if (
-        missedFrames
-        > MAX_MISSED_FRAMES
-      ) {
-        tracksRef.current
-          .delete(
-            track.id,
-          );
-
+      if (missedFrames > MAX_MISSED_FRAMES) {
+        tracksRef.current.delete(track.id);
         continue;
       }
-
 
       tracksRef.current.set(
         track.id,
@@ -874,14 +897,10 @@ export default function LiveDetection() {
       );
     }
 
-
     return output.sort(
-      (a, b) =>
-        a.track_id
-        - b.track_id,
+      (a, b) => a.track_id - b.track_id,
     );
   }
-
 
   function drawLabel(
     ctx:
@@ -1070,17 +1089,8 @@ export default function LiveDetection() {
           detection.box;
 
 
-        const violation =
-          isViolationClass(
-            detection
-              .normalized_class_name,
-          );
-
-
         const color =
-          violation
-            ? "#ef4444"
-            : "#22c55e";
+          "#ef4444";
 
 
         ctx.strokeStyle =
@@ -1095,20 +1105,22 @@ export default function LiveDetection() {
         );
 
 
+        const label =
+          detection.normalized_class_name
+            === "no_gloves"
+            ? "NO-Gloves (inferred)"
+            : `${
+                detection.class_name
+              } ${
+                Math.round(
+                  detection.confidence * 100,
+                )
+              }%`;
+
+
         drawLabel(
           ctx,
-
-          `${
-            detection
-              .class_name
-          } ${
-            Math.round(
-              detection
-                .confidence
-              * 100,
-            )
-          }%`,
-
+          label,
           x1,
           y1,
           color,
@@ -1252,6 +1264,7 @@ export default function LiveDetection() {
     missingPpe:
       MissingPpe,
     confidence: number,
+    personBox: Box,
   ) {
     const key =
       `${trackId}:${missingPpe}`;
@@ -1268,6 +1281,47 @@ export default function LiveDetection() {
 
     const now =
       Date.now();
+
+
+    const recentRegions =
+      (
+        recentIncidentRegionsRef
+          .current
+          .get(missingPpe)
+        ?? []
+      ).filter(
+        region =>
+          now - region.timestamp
+          < REGION_COOLDOWN_MS,
+      );
+
+
+    recentIncidentRegionsRef
+      .current
+      .set(
+        missingPpe,
+        recentRegions,
+      );
+
+
+    if (
+      recentRegions.some(
+        region =>
+          boxesLikelySamePerson(
+            region.box,
+            personBox,
+          ),
+      )
+    ) {
+      incidentCooldownRef
+        .current
+        .set(
+          key,
+          now,
+        );
+
+      return;
+    }
 
 
     const previousIncident =
@@ -1364,11 +1418,36 @@ export default function LiveDetection() {
         await response.json();
 
 
+      const savedAt =
+        Date.now();
+
+
       incidentCooldownRef
         .current
         .set(
           key,
-          Date.now(),
+          savedAt,
+        );
+
+
+      const regions =
+        recentIncidentRegionsRef
+          .current
+          .get(missingPpe)
+        ?? [];
+
+
+      regions.push({
+        box: [...personBox],
+        timestamp: savedAt,
+      });
+
+
+      recentIncidentRegionsRef
+        .current
+        .set(
+          missingPpe,
+          regions.slice(-12),
         );
 
 
@@ -1464,6 +1543,9 @@ export default function LiveDetection() {
             confidence:
               detection
                 .confidence,
+
+            personBox:
+              person.box,
           },
         );
       }
@@ -1502,36 +1584,92 @@ export default function LiveDetection() {
         );
 
 
+      inactiveViolationFramesRef
+        .current
+        .set(
+          violation.key,
+          0,
+        );
+
+
       if (
         currentStreak
         >= INCIDENT_CONFIRM_FRAMES
+        && !incidentLatchedRef
+          .current
+          .has(violation.key)
       ) {
+        incidentLatchedRef
+          .current
+          .add(violation.key);
+
+
         void postBrowserIncident(
           violation.trackId,
           violation.missingPpe,
           violation.confidence,
+          violation.personBox,
         );
       }
     }
 
 
-    for (
-      const key
-      of Array.from(
-        violationStreaksRef
+    const knownKeys =
+      new Set<string>([
+        ...violationStreaksRef
           .current
           .keys(),
-      )
-    ) {
-      if (
-        !activeKeys.has(
-          key,
-        )
-      ) {
-        violationStreaksRef
+        ...incidentLatchedRef
           .current
-          .delete(key);
+          .keys(),
+      ]);
+
+
+    for (const key of knownKeys) {
+      if (activeKeys.has(key)) {
+        continue;
       }
+
+
+      const inactiveFrames =
+        (
+          inactiveViolationFramesRef
+            .current
+            .get(key)
+          ?? 0
+        )
+        + 1;
+
+
+      inactiveViolationFramesRef
+        .current
+        .set(
+          key,
+          inactiveFrames,
+        );
+
+
+      if (
+        inactiveFrames
+        < INCIDENT_CLEAR_FRAMES
+      ) {
+        continue;
+      }
+
+
+      violationStreaksRef
+        .current
+        .delete(key);
+
+
+      incidentLatchedRef
+        .current
+        .delete(key);
+
+
+      inactiveViolationFramesRef
+        .current
+        .delete(key);
     }
   }
 
@@ -1617,6 +1755,42 @@ export default function LiveDetection() {
         );
 
 
+      let inferredGloveDetections:
+        BrowserPPEDetection[] =
+        [];
+
+
+      try {
+        inferredGloveDetections =
+          await gloveInference
+            .inferNoGloves(
+              video,
+              video.videoWidth,
+              video.videoHeight,
+              detections,
+              "video",
+              performance.now(),
+            );
+      } catch (gloveError) {
+        /*
+         * Glove inference is an enhancement.
+         * If MediaPipe cannot load or run,
+         * the trained PPE detector continues.
+         */
+        console.warn(
+          "[SafeVision] NO-Gloves inference unavailable:",
+          gloveError,
+        );
+      }
+
+
+      const allDetections =
+        [
+          ...detections,
+          ...inferredGloveDetections,
+        ];
+
+
       if (
         !detectionActiveRef
           .current
@@ -1626,7 +1800,7 @@ export default function LiveDetection() {
 
 
       const personDetections =
-        detections.filter(
+        allDetections.filter(
           detection =>
             detection
               .className
@@ -1642,7 +1816,7 @@ export default function LiveDetection() {
 
       const ppeDetections:
         DisplayPPEDetection[] =
-        detections
+        allDetections
           .filter(
             detection =>
               DISPLAY_PPE_CLASSES
@@ -1695,7 +1869,7 @@ export default function LiveDetection() {
        * Then confirm and create incidents.
        */
       processViolationsForIncidents(
-        detections,
+        allDetections,
         people,
       );
 
@@ -1772,6 +1946,19 @@ export default function LiveDetection() {
       await ppeDetector.load();
 
 
+      try {
+        await gloveInference
+          .startSession(
+            "video",
+          );
+      } catch (gloveError) {
+        console.warn(
+          "[SafeVision] Hand landmark model could not be prepared. Core PPE detection will continue:",
+          gloveError,
+        );
+      }
+
+
       if (
         !detectionActiveRef
           .current
@@ -1841,6 +2028,21 @@ export default function LiveDetection() {
 
 
     incidentInFlightRef
+      .current
+      .clear();
+
+
+    incidentLatchedRef
+      .current
+      .clear();
+
+
+    inactiveViolationFramesRef
+      .current
+      .clear();
+
+
+    recentIncidentRegionsRef
       .current
       .clear();
 

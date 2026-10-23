@@ -10,7 +10,6 @@ from app.api.cameras import router as cameras_router
 from app.api.health import router as health_router
 from app.api.incidents import router as incidents_router
 from app.api.model import router as model_router
-
 from app.core.config import settings
 
 
@@ -19,72 +18,48 @@ app = FastAPI(
     version="0.1.0",
 )
 
-
 production_origin = (
-    settings.frontend_origin
-    .rstrip("/")
+    settings.frontend_origin.rstrip("/")
 )
-
 
 app.add_middleware(
     CORSMiddleware,
-
-    # Production frontend, e.g. Netlify.
-    allow_origins=[
-        production_origin,
-    ],
-
-    # Also allow local Vite development.
+    allow_origins=[production_origin],
     allow_origin_regex=(
         r"^https?://"
         r"(localhost|127\.0\.0\.1)"
         r"(:\d+)?$"
     ),
-
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-
-# ---------------------------------------------------------
-# API ROUTES
-# ---------------------------------------------------------
-
 app.include_router(
     health_router,
     prefix="/api",
 )
-
 app.include_router(
     incidents_router,
     prefix="/api",
 )
-
 app.include_router(
     browser_incidents_router,
     prefix="/api",
 )
-
 app.include_router(
     analytics_router,
     prefix="/api",
 )
-
 app.include_router(
     cameras_router,
     prefix="/api",
 )
-
 app.include_router(
     model_router,
     prefix="/api",
 )
 
-
-# ---------------------------------------------------------
-# EVIDENCE
-# ---------------------------------------------------------
 
 Path(
     settings.evidence_dir
@@ -93,11 +68,10 @@ Path(
     exist_ok=True,
 )
 
-
 app.mount(
     "/evidence",
     StaticFiles(
-        directory=settings.evidence_dir,
+        directory=settings.evidence_dir
     ),
     name="evidence",
 )
@@ -106,7 +80,6 @@ app.mount(
 @app.get("/")
 def root():
     return {
-        "name": settings.app_name,
-        "version": "0.1.0",
-        "docs": "/docs",
+        "app": settings.app_name,
+        "status": "ok",
     }

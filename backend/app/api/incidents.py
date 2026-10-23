@@ -2,7 +2,7 @@ from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from app.db.models import Camera, Incident, IncidentEvidence
@@ -23,24 +23,16 @@ router = APIRouter(
 )
 
 
-@router.get(
-    "",
-    response_model=list[IncidentRead],
-)
-def list_incidents(
+def build_incident_query(
+    *,
     status: str | None = None,
     severity: str | None = None,
     site: int | None = None,
     camera: int | None = None,
     violation_type: str | None = None,
+    search: str | None = None,
     start: datetime | None = None,
     end: datetime | None = None,
-    limit: int = Query(
-        default=100,
-        ge=1,
-        le=500,
-    ),
-    db: Session = Depends(get_db),
 ):
     stmt = select(Incident)
 
@@ -84,15 +76,165 @@ def list_incidents(
             Incident.detected_at <= end
         )
 
+    if search:
+        term = search.strip()
+
+        if term:
+            text_pattern = f"%{term}%"
+
+            conditions = [
+                Incident.violation_type.ilike(
+                    text_pattern
+                ),
+                Incident.status.ilike(
+                    text_pattern
+                ),
+                Incident.severity.ilike(
+                    text_pattern
+                ),
+            ]
+
+            numeric_term = (
+                term.removeprefix("#")
+            )
+
+            if numeric_term.isdigit():
+                number = int(
+                    numeric_term
+                )
+
+                conditions.extend([
+                    Incident.id == number,
+                    Incident.track_id == number,
+                    Incident.camera_id == number,
+                ])
+
+            stmt = stmt.where(
+                or_(*conditions)
+            )
+
+    return stmt
+
+
+@router.get(
+    "",
+    response_model=list[IncidentRead],
+)
+def list_incidents(
+    status: str | None = None,
+    severity: str | None = None,
+    site: int | None = None,
+    camera: int | None = None,
+    violation_type: str | None = None,
+    search: str | None = None,
+    start: datetime | None = None,
+    end: datetime | None = None,
+    offset: int = Query(
+        default=0,
+        ge=0,
+    ),
+    limit: int = Query(
+        default=100,
+        ge=1,
+        le=500,
+    ),
+    db: Session = Depends(get_db),
+):
+    if (
+        start is not None
+        and end is not None
+        and end < start
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "End date must be after "
+                "start date."
+            ),
+        )
+
+    stmt = build_incident_query(
+        status=status,
+        severity=severity,
+        site=site,
+        camera=camera,
+        violation_type=violation_type,
+        search=search,
+        start=start,
+        end=end,
+    )
+
     return list(
         db.scalars(
             stmt
             .order_by(
-                Incident.detected_at.desc()
+                Incident.detected_at.desc(),
+                Incident.id.desc(),
             )
+            .offset(offset)
             .limit(limit)
         ).all()
     )
+
+
+@router.get(
+    "/count",
+)
+def count_incidents(
+    status: str | None = None,
+    severity: str | None = None,
+    site: int | None = None,
+    camera: int | None = None,
+    violation_type: str | None = None,
+    search: str | None = None,
+    start: datetime | None = None,
+    end: datetime | None = None,
+    db: Session = Depends(get_db),
+):
+    if (
+        start is not None
+        and end is not None
+        and end < start
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "End date must be after "
+                "start date."
+            ),
+        )
+
+    stmt = build_incident_query(
+        status=status,
+        severity=severity,
+        site=site,
+        camera=camera,
+        violation_type=violation_type,
+        search=search,
+        start=start,
+        end=end,
+    )
+
+    count_stmt = (
+        select(
+            func.count()
+        )
+        .select_from(
+            stmt
+            .order_by(None)
+            .subquery()
+        )
+    )
+
+    count = db.scalar(
+        count_stmt
+    )
+
+    return {
+        "count": int(
+            count or 0
+        ),
+    }
 
 
 @router.get(
