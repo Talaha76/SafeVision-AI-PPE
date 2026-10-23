@@ -369,6 +369,132 @@ h3 {
 
 
 /* =========================================================
+   DASHBOARD CAUTION BANNER
+   ========================================================= */
+
+.dashboardCaution {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+
+  margin:
+    -14px 0
+    14px;
+
+  padding:
+    10px 14px;
+
+  border:
+    1px solid #fecaca;
+
+  border-left:
+    5px solid #dc2626;
+
+  border-radius:
+    13px;
+
+  background:
+    linear-gradient(
+      90deg,
+      #fff1f2 0%,
+      #fef2f2 100%
+    );
+
+  color:
+    #991b1b;
+
+  box-shadow:
+    0 5px 18px
+    rgba(220, 38, 38, 0.07);
+}
+
+.dashboardCautionIcon {
+  display: grid;
+  place-items: center;
+
+  width: 24px;
+  height: 24px;
+
+  flex:
+    0 0 24px;
+
+  border-radius:
+    50%;
+
+  background:
+    #dc2626;
+
+  color:
+    #ffffff;
+
+  font-size:
+    13px;
+
+  font-weight:
+    900;
+
+  line-height:
+    1;
+}
+
+.dashboardCaution p {
+  margin: 0;
+
+  color:
+    inherit;
+
+  font-size:
+    11px;
+
+  font-weight:
+    750;
+
+  line-height:
+    1.4;
+
+  letter-spacing:
+    0.015em;
+}
+
+.dashboardCaution p strong {
+  font-weight:
+    900;
+}
+
+.dashboardCautionAction {
+  display:
+    inline-flex;
+
+  align-items:
+    center;
+
+  margin:
+    0 3px;
+
+  padding:
+    2px 6px;
+
+  border-radius:
+    6px;
+
+  background:
+    #dc2626;
+
+  color:
+    #ffffff;
+
+  font-size:
+    11px;
+
+  font-weight:
+    900;
+
+  white-space:
+    nowrap;
+}
+
+
+/* =========================================================
    LOADING / ERRORS
    ========================================================= */
 
@@ -1642,6 +1768,42 @@ body.dark-mode .refreshButton:hover {
 
 
 /* =========================================================
+   DARK MODE — CAUTION BANNER
+   ========================================================= */
+
+body.dark-mode .dashboardCaution {
+  border-color:
+    #7f1d1d;
+
+  border-left-color:
+    #ef4444;
+
+  background:
+    linear-gradient(
+      90deg,
+      rgba(127, 29, 29, 0.28) 0%,
+      rgba(69, 10, 10, 0.22) 100%
+    );
+
+  color:
+    #fecaca;
+
+  box-shadow:
+    0 7px 20px
+    rgba(0, 0, 0, 0.18);
+}
+
+body.dark-mode .dashboardCautionIcon,
+body.dark-mode .dashboardCautionAction {
+  background:
+    #ef4444;
+
+  color:
+    #ffffff;
+}
+
+
+/* =========================================================
    DARK MODE — ERRORS / LOADING
    ========================================================= */
 
@@ -2068,6 +2230,39 @@ body.dark-mode .evidencePanel {
     flex: 1;
 
     justify-content: center;
+  }
+
+  .dashboardCaution {
+    align-items:
+      flex-start;
+
+    margin-top:
+      -12px;
+
+    margin-bottom:
+      12px;
+
+    padding:
+      10px 12px;
+  }
+
+  .dashboardCaution p {
+    font-size:
+      11px;
+  }
+
+  .dashboardCautionIcon {
+    width:
+      25px;
+
+    height:
+      25px;
+
+    flex-basis:
+      25px;
+
+    font-size:
+      13px;
   }
 
   .cards {

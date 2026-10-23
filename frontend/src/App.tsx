@@ -1067,6 +1067,34 @@ export default function App() {
       </header>
 
 
+      {
+        activePage === 'overview'
+        && (
+          <div
+            className="dashboardCaution"
+            role="note"
+            aria-label="Live Detection data reminder"
+          >
+            <span className="dashboardCautionIcon">
+              !
+            </span>
+
+            <p>
+              <strong>IMPORTANT:</strong>
+              {' '}
+              AFTER USING LIVE DETECTION, PLEASE CLICK THE RED
+              {' '}
+              <span className="dashboardCautionAction">
+                CLEAR DATA
+              </span>
+              {' '}
+              BUTTON IN THE TOP RIGHT TO REMOVE ALL INCIDENTS RECORDED DURING YOUR SESSION. DEMO DATA WILL REMAIN.
+            </p>
+          </div>
+        )
+      }
+
+
       {/* ==================================================
           PAGE
           ================================================== */}
