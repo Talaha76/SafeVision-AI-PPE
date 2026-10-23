@@ -1,3 +1,12 @@
+# ============================================================
+# SAFEVISION AI — MODEL METRICS IMPORT
+# ============================================================
+#
+# Imports model evaluation metrics from a JSON file and
+# stores them in PostgreSQL for dashboard reporting.
+#
+# ============================================================
+
 import argparse
 import json
 from pathlib import Path

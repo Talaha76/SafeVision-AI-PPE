@@ -1,3 +1,16 @@
+# ============================================================
+# SAFEVISION AI — BROWSER INCIDENT API
+# ============================================================
+#
+# Receives confirmed PPE violations from the browser.
+# Normalizes PPE types, assigns severity, prevents duplicates,
+# stores evidence images, and saves incidents to PostgreSQL.
+#
+# Route:
+# POST /api/browser-incidents
+#
+# ============================================================
+
 import base64
 import binascii
 

@@ -1,5 +1,11 @@
 /* =========================================================
-   SAFEVISION AI — GLOBAL DASHBOARD STYLES
+   SAFEVISION AI — GLOBAL STYLES
+   =========================================================
+
+   Defines the shared visual design for the dashboard,
+   analytics, incident management, evidence views, dark mode,
+   responsive layouts, navigation, cards, and controls.
+
    ========================================================= */
 
 * {

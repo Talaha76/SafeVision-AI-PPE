@@ -1,3 +1,12 @@
+# ============================================================
+# SAFEVISION AI — DEDUPLICATION TEST
+# ============================================================
+#
+# Verifies that duplicate PPE incidents for the same camera,
+# track, and violation are suppressed within the cooldown.
+#
+# ============================================================
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session
 from sqlalchemy.pool import StaticPool

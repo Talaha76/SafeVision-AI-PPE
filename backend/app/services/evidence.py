@@ -1,3 +1,14 @@
+# ============================================================
+# SAFEVISION AI — EVIDENCE SERVICE
+# ============================================================
+#
+# Stores incident evidence images in PostgreSQL and keeps only
+# the latest configured images to control database storage.
+#
+# Includes legacy server-side OpenCV evidence helpers.
+#
+# ============================================================
+
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 

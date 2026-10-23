@@ -1,3 +1,13 @@
+# ============================================================
+# SAFEVISION AI — ANALYTICS SERVICE
+# ============================================================
+#
+# Calculates dashboard statistics such as incident totals,
+# compliance rate, top violations, risk locations, resolution
+# time, duplicate reduction, and incident trends.
+#
+# ============================================================
+
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import func, select

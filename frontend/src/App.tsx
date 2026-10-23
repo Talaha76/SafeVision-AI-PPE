@@ -1,3 +1,13 @@
+// ============================================================
+// SAFEVISION AI — MAIN APPLICATION
+// ============================================================
+//
+// Controls the main dashboard, navigation, analytics charts,
+// incident history, status updates, evidence viewing, theme,
+// and access to live and upload detection pages.
+//
+// ============================================================
+
 import {
   Fragment,
   useEffect,
@@ -2150,8 +2160,8 @@ export default function App() {
 
                             <p className="panelDescription">
                               Latest 50 incidents by default.
-                              Filters query the full incident
-                              history.
+                              Filters query the full Incident
+                              History.
                             </p>
 
                           </div>
@@ -2164,15 +2174,6 @@ export default function App() {
 
                         </div>
 
-
-                        <p className="incidentHelp">
-                          Select an incident ID to inspect
-                          its evidence. Without filters this
-                          table shows the newest 50 incidents.
-                          Use the filters to query all stored
-                          incident records, including older
-                          resolved incidents.
-                        </p>
 
 
                         <div className="incidentFilters">
@@ -2347,13 +2348,6 @@ export default function App() {
                                 )
                                 : (
                                   <>
-                                    Showing the newest
-                                    {' '}
-                                    <strong>
-                                      {incidents.length}
-                                    </strong>
-                                    {' '}
-                                    incidents
                                   </>
                                 )
                             }

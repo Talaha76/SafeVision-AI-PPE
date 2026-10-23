@@ -1,3 +1,12 @@
+# ============================================================
+# SAFEVISION AI — DATABASE SESSION
+# ============================================================
+#
+# Creates the SQLAlchemy database engine and provides
+# database sessions for FastAPI routes and services.
+#
+# ============================================================
+
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 from app.core.config import settings

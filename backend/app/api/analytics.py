@@ -1,3 +1,16 @@
+# ============================================================
+# SAFEVISION AI — ANALYTICS API
+# ============================================================
+#
+# Provides dashboard analytics from PostgreSQL, including
+# summaries, trends, PPE violations, site counts, incident
+# statuses, severity distribution, and chart data.
+#
+# Routes are available under:
+# /api/analytics
+#
+# ============================================================
+
 from datetime import (
     datetime,
     timedelta,

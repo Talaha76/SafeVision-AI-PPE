@@ -1,3 +1,12 @@
+# ============================================================
+# SAFEVISION AI — LEGACY LIVE DETECTION API
+# ============================================================
+#
+# Old server-side YOLO/WebSocket detection pipeline.
+# Replaced by browser-based ONNX live detection.
+#
+# ============================================================
+
 import cv2
 import numpy as np
 

@@ -1,3 +1,13 @@
+
+# ============================================================
+# SAFEVISION AI — HEALTH API TEST
+# ============================================================
+#
+# Verifies that the backend health endpoint is reachable
+# and returns the expected success response.
+#
+# ============================================================
+
 from fastapi.testclient import TestClient
 from app.main import app
 

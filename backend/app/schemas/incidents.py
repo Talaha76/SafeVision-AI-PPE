@@ -1,3 +1,12 @@
+# ============================================================
+# SAFEVISION AI — INCIDENT SCHEMAS
+# ============================================================
+#
+# Defines the request and response data models used to
+# create, update, validate, and return incident records.
+#
+# ============================================================
+
 from datetime import datetime
 from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field

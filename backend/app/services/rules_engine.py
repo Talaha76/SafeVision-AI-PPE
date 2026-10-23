@@ -1,3 +1,12 @@
+# ============================================================
+# SAFEVISION AI — PPE RULES ENGINE
+# ============================================================
+#
+# Evaluates PPE compliance, normalizes PPE labels, determines
+# missing equipment, and assigns incident severity.
+#
+# ============================================================
+
 from dataclasses import dataclass
 
 

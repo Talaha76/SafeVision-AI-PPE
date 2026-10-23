@@ -1,3 +1,12 @@
+// ============================================================
+// SAFEVISION AI — INCIDENT LOOKUP
+// ============================================================
+//
+// Lets users search for a specific incident by ID, view its
+// details, and load any available evidence from the backend.
+//
+// ============================================================
+
 import {
   useState,
 } from 'react'

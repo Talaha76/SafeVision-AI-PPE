@@ -1,3 +1,12 @@
+# ============================================================
+# SAFEVISION AI — FASTAPI APPLICATION
+# ============================================================
+#
+# Creates the backend application, configures CORS,
+# registers API routes, and exposes the main health endpoint.
+#
+# ============================================================
+
 from pathlib import Path
 
 from fastapi import FastAPI

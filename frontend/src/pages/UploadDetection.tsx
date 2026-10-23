@@ -1,3 +1,13 @@
+// ============================================================
+// SAFEVISION AI — UPLOAD DETECTION
+// ============================================================
+//
+// Analyzes uploaded images and videos in the browser for PPE
+// violations and produces detection results and timelines
+// without creating dashboard incidents.
+//
+// ============================================================
+
 import {
   ChangeEvent,
   useEffect,
@@ -1939,14 +1949,7 @@ export default function UploadDetection() {
               the overlay so attention stays on violations.
               Upload analysis runs locally in this browser
               and does not create incidents or modify dashboard
-              analytics. Hardhat, vest, and mask faults come
-              from explicit trained negative PPE classes.
-              Missing gloves are inferred conservatively only
-              when a visible hand is found inside a worker, the
-              PPE model does not detect Gloves near that hand,
-              and the hand crop contains enough exposed-skin
-              evidence to look bare. Glove results are labeled
-              as inferred rather than shown as YOLO confidence.
+              analytics.
             </p>
           </section>
         )}

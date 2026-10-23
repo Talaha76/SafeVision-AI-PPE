@@ -1,3 +1,12 @@
+# ============================================================
+# SAFEVISION AI — RULES ENGINE TESTS
+# ============================================================
+#
+# Verifies PPE rule evaluation, explicit violation detection,
+# severity assignment, and optional absence-based logic.
+#
+# ============================================================
+
 from app.services.rules_engine import evaluate_ppe
 
 

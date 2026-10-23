@@ -1,3 +1,12 @@
+// ============================================================
+// SAFEVISION AI — API CLIENT
+// ============================================================
+//
+// Configures the backend API base URL and provides reusable
+// helpers for GET, POST, and PATCH JSON requests.
+//
+// ============================================================
+
 const configuredApiUrl =
   import.meta.env.VITE_API_URL?.trim()
 

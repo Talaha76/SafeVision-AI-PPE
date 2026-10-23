@@ -1,3 +1,12 @@
+# ============================================================
+# SAFEVISION AI — INCIDENT SERVICE
+# ============================================================
+#
+# Creates incidents and prevents duplicate PPE violations
+# within the configured cooldown period.
+#
+# ============================================================
+
 from datetime import datetime, timedelta, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session

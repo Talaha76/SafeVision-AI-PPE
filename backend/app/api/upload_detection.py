@@ -1,3 +1,12 @@
+# ============================================================
+# SAFEVISION AI — LEGACY UPLOAD DETECTION API
+# ============================================================
+#
+# Old server-side image/video detection pipeline.
+# Replaced by browser-based ONNX upload detection.
+#
+# ============================================================
+
 from math import hypot
 
 import cv2

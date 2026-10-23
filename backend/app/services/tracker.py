@@ -1,3 +1,12 @@
+# ============================================================
+# SAFEVISION AI — LEGACY PERSON TRACKER
+# ============================================================
+#
+# Tracks detected people with ByteTrack and associates
+# PPE detections with each tracked person.
+#
+# ============================================================
+
 from dataclasses import dataclass
 import numpy as np
 from ultralytics import YOLO

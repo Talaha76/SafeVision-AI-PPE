@@ -1,3 +1,12 @@
+# ============================================================
+# SAFEVISION AI — LEGACY VIDEO WORKER
+# ============================================================
+#
+# Old server-side video processing pipeline using YOLO,
+# ByteTrack, PPE rules, incident creation, and evidence saving.
+#
+# ============================================================
+
 import argparse
 
 import cv2

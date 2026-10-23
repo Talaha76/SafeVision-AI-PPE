@@ -1,3 +1,12 @@
+# ============================================================
+# SAFEVISION AI — MODEL INSPECTION
+# ============================================================
+#
+# Loads a YOLO model, lists its embedded classes, and checks
+# whether the expected SafeVision PPE labels are present.
+#
+# ============================================================
+
 import argparse
 from ultralytics import YOLO
 

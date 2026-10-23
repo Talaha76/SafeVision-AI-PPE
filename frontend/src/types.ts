@@ -1,3 +1,12 @@
+// ============================================================
+// SAFEVISION AI — FRONTEND TYPES
+// ============================================================
+//
+// Defines shared TypeScript types for dashboard summaries,
+// incidents, trends, PPE analytics, status, and severity data.
+//
+// ============================================================
+
 export type Summary = {
   incidents_today: number
   open_incidents: number

@@ -1,3 +1,12 @@
+# ============================================================
+# SAFEVISION AI — CAMERA SCHEMAS
+# ============================================================
+#
+# Defines the request and response data models used to
+# create, update, and return camera records through the API.
+#
+# ============================================================
+
 from pydantic import BaseModel, ConfigDict
 
 

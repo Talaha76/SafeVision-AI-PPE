@@ -1,3 +1,16 @@
+# ============================================================
+# SAFEVISION AI — INCIDENTS API
+# ============================================================
+#
+# Manages incident records and evidence in PostgreSQL.
+# Supports filtering, counting, retrieving, creating,
+# updating, and viewing incident evidence.
+#
+# Routes are available under:
+# /api/incidents
+#
+# ============================================================
+
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Query

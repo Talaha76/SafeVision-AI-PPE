@@ -1,3 +1,15 @@
+# ============================================================
+# SAFEVISION AI — MODEL API
+# ============================================================
+#
+# Returns the latest stored model evaluation metrics,
+# including precision, recall, F1, mAP, latency, and FPS.
+#
+# Route:
+# GET /api/model/performance
+#
+# ============================================================
+
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.orm import Session

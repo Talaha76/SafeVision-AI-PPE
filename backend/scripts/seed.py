@@ -1,3 +1,12 @@
+# ============================================================
+# SAFEVISION AI — DATABASE SEED
+# ============================================================
+#
+# Creates the default demo site and camera records used for
+# local development and testing.
+#
+# ============================================================
+
 from app.db.models import Camera, Incident, Site
 from app.db.session import SessionLocal
 

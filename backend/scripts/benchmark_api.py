@@ -1,3 +1,12 @@
+# ============================================================
+# SAFEVISION AI — API BENCHMARK
+# ============================================================
+#
+# Measures backend API response times and reports mean,
+# median (p50), and p95 latency across multiple requests.
+#
+# ============================================================
+
 import argparse
 import statistics
 import time

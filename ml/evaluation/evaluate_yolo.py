@@ -1,3 +1,12 @@
+# ============================================================
+# SAFEVISION AI — YOLO MODEL EVALUATION
+# ============================================================
+#
+# Evaluates a YOLO PPE model on a validation dataset and
+# saves precision, recall, F1, mAP, latency, and FPS metrics.
+#
+# ============================================================
+
 import argparse
 import json
 from pathlib import Path

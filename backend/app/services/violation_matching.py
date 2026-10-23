@@ -1,3 +1,12 @@
+# ============================================================
+# SAFEVISION AI — VIOLATION MATCHING
+# ============================================================
+#
+# Matches missing PPE rules with the corresponding explicit
+# negative detection and selects the strongest match.
+#
+# ============================================================
+
 def normalize_class_name(
     name: str,
 ) -> str:

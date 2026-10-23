@@ -1,3 +1,12 @@
+# ============================================================
+# SAFEVISION AI — LEGACY PPE DETECTOR
+# ============================================================
+#
+# Old server-side YOLO PPE detection service.
+# Replaced by browser-based ONNX inference.
+#
+# ============================================================
+
 from dataclasses import dataclass
 import re
 import numpy as np

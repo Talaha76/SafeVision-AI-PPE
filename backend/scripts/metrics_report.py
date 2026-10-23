@@ -1,3 +1,12 @@
+# ============================================================
+# SAFEVISION AI — METRICS REPORT
+# ============================================================
+#
+# Prints measured database and model performance metrics
+# for validation, reporting, and portfolio documentation.
+#
+# ============================================================
+
 """Print database-backed portfolio metrics. Run only after collecting real data."""
 from sqlalchemy import func, select
 from app.db.models import ComplianceObservation, DetectionEvent, Incident, ModelRun

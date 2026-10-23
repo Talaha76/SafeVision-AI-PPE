@@ -1,3 +1,15 @@
+# ============================================================
+# SAFEVISION AI — CAMERAS API
+# ============================================================
+#
+# Manages camera records in PostgreSQL.
+# Supports listing, creating, and updating cameras.
+#
+# Routes are available under:
+# /api/cameras
+#
+# ============================================================
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session

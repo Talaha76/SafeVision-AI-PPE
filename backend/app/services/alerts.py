@@ -1,3 +1,12 @@
+# ============================================================
+# SAFEVISION AI — ALERT SERVICE
+# ============================================================
+#
+# Sends webhook alerts for high-severity PPE incidents
+# and logs alerts when no webhook is configured.
+#
+# ============================================================
+
 import json
 import logging
 from urllib.request import Request, urlopen

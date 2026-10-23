@@ -1,3 +1,12 @@
+# ============================================================
+# SAFEVISION AI — TEST CONFIGURATION
+# ============================================================
+#
+# Configures the test environment to use an in-memory SQLite
+# database and prepares backend imports for automated tests.
+#
+# ============================================================
+
 import os
 import sys
 from pathlib import Path

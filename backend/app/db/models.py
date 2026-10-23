@@ -1,3 +1,13 @@
+# ============================================================
+# SAFEVISION AI — DATABASE MODELS
+# ============================================================
+#
+# Defines the PostgreSQL tables and relationships for sites,
+# cameras, incidents, evidence, detections, compliance data,
+# and stored model evaluation results.
+#
+# ============================================================
+
 from datetime import datetime
 from typing import Optional
 from sqlalchemy import Boolean, DateTime, Float, ForeignKey, Integer, JSON, String, Text, func

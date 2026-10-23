@@ -1,3 +1,13 @@
+// ============================================================
+// SAFEVISION AI — LIVE DETECTION
+// ============================================================
+//
+// Runs browser-based PPE detection from the webcam, tracks
+// people, confirms violations, draws overlays, and sends
+// confirmed incidents with evidence to the backend.
+//
+// ============================================================
+
 import {
   useEffect,
   useRef,
