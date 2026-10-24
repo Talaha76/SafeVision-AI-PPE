@@ -2,12 +2,21 @@
 # SAFEVISION AI — ANALYTICS API
 # ============================================================
 #
-# Provides dashboard analytics from PostgreSQL, including
-# summaries, trends, PPE violations, site counts, incident
-# statuses, severity distribution, and chart data.
+# Provides dashboard analytics from PostgreSQL.
 #
-# Routes are available under:
-# /api/analytics
+# Non-Compliance Rate:
+#
+# LIVE DETECTION
+#   0 missing PPE =   0%
+#   1 missing PPE =  25%
+#   2 missing PPE =  50%
+#   3 missing PPE =  75%
+#   4 missing PPE = 100%
+#
+# DEMO FALLBACK
+#   Each permanent demo image is treated as 75% non-compliant
+#   because the demo image tracks one PPE category out of the
+#   four required PPE categories.
 #
 # ============================================================
 
@@ -59,7 +68,7 @@ router = APIRouter(
 
 
 # ============================================================
-# HELPERS
+# CONSTANTS
 # ============================================================
 
 CORE_PPE = (
@@ -70,24 +79,29 @@ CORE_PPE = (
 )
 
 
+PPE_COUNT = len(
+    CORE_PPE
+)
+
+
+# Each demo image represents one PPE category being tracked.
+#
+# Your desired interpretation:
+#
+# 1 of 4 accounted for
+# 3 of 4 considered non-compliant
+#
+# 3 / 4 = 75%
+DEMO_MISSING_PPE_COUNT = 3
+
+
+# ============================================================
+# HELPERS
+# ============================================================
+
 def normalize_violation_type(
     value: str,
 ) -> str:
-    """
-    Convert different incident naming styles into
-    the four PPE names used by dashboard charts.
-
-    Examples:
-    hardhat
-        -> hardhat
-    NO-Hardhat
-        -> hardhat
-    missing_hardhat
-        -> hardhat
-    NO-Safety Vest
-        -> vest
-    """
-
     normalized = (
         value
         .strip()
@@ -96,12 +110,16 @@ def normalize_violation_type(
         .replace(" ", "_")
     )
 
-    if normalized.startswith("missing_"):
+    if normalized.startswith(
+        "missing_"
+    ):
         normalized = normalized[
             len("missing_"):
         ]
 
-    if normalized.startswith("no_"):
+    if normalized.startswith(
+        "no_"
+    ):
         normalized = normalized[
             len("no_"):
         ]
@@ -118,26 +136,22 @@ def normalize_violation_type(
 def incident_date(
     detected_at: datetime,
 ):
-    """
-    Safely return the incident's UTC date.
-
-    PostgreSQL normally returns timezone-aware
-    timestamps, but this also handles naive
-    timestamps during local/testing scenarios.
-    """
-
     if detected_at.tzinfo is None:
-        return detected_at.date()
+        return (
+            detected_at.date()
+        )
 
     return (
         detected_at
-        .astimezone(timezone.utc)
+        .astimezone(
+            timezone.utc
+        )
         .date()
     )
 
 
 # ============================================================
-# ANALYTICS REQUEST SCHEMAS
+# REQUEST SCHEMAS
 # ============================================================
 
 class ComplianceObservationCreate(
@@ -182,45 +196,50 @@ DUPLICATE_EVENT_TYPES = {
 
 
 # ============================================================
-# SUMMARY
+# DASHBOARD SUMMARY
 # ============================================================
 
 @router.get("/summary")
 def analytics_summary(
-    db: Session = Depends(get_db),
+    db: Session = Depends(
+        get_db
+    ),
 ):
     """
-    Return the SafeVision dashboard summary.
+    Return SafeVision dashboard summary.
 
-    The existing compliance_rate JSON key is kept for frontend
-    compatibility, but it represents NON-COMPLIANCE RATE.
+    The existing response field:
 
-    SafeVision evaluates four equally weighted PPE categories:
+        compliance_rate
 
-        Hardhat
-        Safety Vest
-        Mask
-        Gloves
+    is preserved for frontend compatibility, but it represents:
 
-    Per observation:
+        NON-COMPLIANCE RATE
 
-        0 missing PPE ->   0% non-compliant
-        1 missing PPE ->  25% non-compliant
-        2 missing PPE ->  50% non-compliant
-        3 missing PPE ->  75% non-compliant
-        4 missing PPE -> 100% non-compliant
+    LIVE DETECTION
+    ----------------
+    Each tracked person observation is evaluated against:
 
-    During a live session, the KPI is calculated from live
-    ComplianceObservation rows only. This prevents the permanent
-    demo incidents from diluting the current live-session rate.
+        hardhat
+        vest
+        mask
+        gloves
 
-    When there are no live observations, the five demo incidents
-    are used as the dashboard fallback so the demo remains
-    populated.
+    Formula:
 
-    Duplicate Reduction measures the share of confirmed alert
-    opportunities that SafeVision suppressed instead of creating
-    as another incident.
+        missing PPE
+        -----------
+            4
+        x 100
+
+    DEMO DATA
+    ---------
+    When there are no live observations, every permanent demo
+    image contributes 75% non-compliance.
+
+    This keeps demo analytics populated while allowing actual
+    live observations to completely take over the KPI during
+    a live session.
     """
 
     result = dict(
@@ -231,14 +250,17 @@ def analytics_summary(
         timezone.utc
     ).date()
 
-    today_start = datetime.combine(
-        today,
-        datetime.min.time(),
-        tzinfo=timezone.utc,
+    today_start = (
+        datetime.combine(
+            today,
+            datetime.min.time(),
+            tzinfo=timezone.utc,
+        )
     )
 
+
     # ========================================================
-    # LIVE NON-COMPLIANCE RATE
+    # LIVE DETECTION NON-COMPLIANCE
     # ========================================================
 
     live_rows = list(
@@ -253,8 +275,10 @@ def analytics_summary(
         ).all()
     )
 
+
     if live_rows:
-        live_missing_slots = 0
+        total_live_missing_slots = 0
+
 
         for observation in live_rows:
             missing_count = max(
@@ -264,117 +288,98 @@ def analytics_summary(
                         observation.missing_count
                         or 0
                     ),
-                    len(
-                        CORE_PPE
-                    ),
+                    PPE_COUNT,
                 ),
             )
 
-            live_missing_slots += (
+
+            total_live_missing_slots += (
                 missing_count
             )
 
-        live_possible_slots = (
+
+        total_live_slots = (
             len(
                 live_rows
             )
-            * len(
-                CORE_PPE
-            )
+            * PPE_COUNT
         )
+
 
         result[
             "compliance_rate"
         ] = round(
             (
-                live_missing_slots
-                / live_possible_slots
+                total_live_missing_slots
+                / total_live_slots
             )
             * 100,
             1,
         )
 
+
     else:
+
         # ====================================================
         # DEMO FALLBACK
         # ====================================================
         #
-        # Demo data is used only when there are no live
-        # ComplianceObservation rows for the current day.
-        # Each demo incident contributes one observation.
+        # Each demo image is treated as:
+        #
+        # 3 missing PPE / 4 required PPE
+        #
+        # = 75% non-compliant
+        #
+        # Five demo images therefore still average to 75%.
         # ====================================================
 
-        demo_rows = list(
-            db.scalars(
+        demo_count = int(
+            db.scalar(
                 select(
-                    Incident
+                    func.count(
+                        Incident.id
+                    )
                 )
                 .where(
                     Incident.is_demo.is_(
                         True
                     )
                 )
-            ).all()
+            )
+            or 0
         )
 
-        demo_missing_slots = 0
 
-        for incident in demo_rows:
-            normalized_missing = []
-
-            for value in (
-                incident.missing_ppe
-                or []
-            ):
-                normalized = (
-                    normalize_violation_type(
-                        value
-                    )
-                )
-
-                if (
-                    normalized in CORE_PPE
-                    and normalized
-                    not in normalized_missing
-                ):
-                    normalized_missing.append(
-                        normalized
-                    )
-
-            demo_missing_slots += min(
-                len(
-                    normalized_missing
-                ),
-                len(
-                    CORE_PPE
-                ),
-            )
-
-        demo_possible_slots = (
-            len(
-                demo_rows
-            )
-            * len(
-                CORE_PPE
-            )
-        )
-
-        if demo_possible_slots <= 0:
+        if demo_count <= 0:
             result[
                 "compliance_rate"
             ] = None
 
+
         else:
+            demo_missing_slots = (
+                demo_count
+                * DEMO_MISSING_PPE_COUNT
+            )
+
+
+            demo_total_slots = (
+                demo_count
+                * PPE_COUNT
+            )
+
+
             result[
                 "compliance_rate"
             ] = round(
                 (
                     demo_missing_slots
-                    / demo_possible_slots
+                    / demo_total_slots
                 )
                 * 100,
                 1,
             )
+
 
     # ========================================================
     # DUPLICATE REDUCTION
@@ -390,12 +395,14 @@ def analytics_summary(
             .where(
                 DetectionEvent.detected_at
                 >= today_start,
+
                 DetectionEvent.class_name
                 == "alert_created",
             )
         )
         or 0
     )
+
 
     suppressed_alerts = int(
         db.scalar(
@@ -407,6 +414,7 @@ def analytics_summary(
             .where(
                 DetectionEvent.detected_at
                 >= today_start,
+
                 DetectionEvent.class_name
                 == "alert_suppressed",
             )
@@ -414,15 +422,18 @@ def analytics_summary(
         or 0
     )
 
+
     duplicate_decisions = (
         created_alerts
         + suppressed_alerts
     )
 
+
     if duplicate_decisions <= 0:
         result[
             "duplicate_reduction_pct"
         ] = None
+
 
     else:
         result[
@@ -436,11 +447,12 @@ def analytics_summary(
             1,
         )
 
+
     return result
 
 
 # ============================================================
-# COMPLIANCE OBSERVATIONS
+# LIVE COMPLIANCE OBSERVATIONS
 # ============================================================
 
 @router.post(
@@ -449,31 +461,34 @@ def analytics_summary(
 )
 def create_compliance_observation(
     payload: ComplianceObservationCreate,
-    db: Session = Depends(get_db),
+
+    db: Session = Depends(
+        get_db
+    ),
 ):
-    """
-    Store one person-observation snapshot from browser
-    Live Detection.
-
-    The backend normalizes the four PPE categories and derives
-    missing_count itself from missing_ppe.
-    """
-
     normalized_missing = []
 
-    for value in payload.missing_ppe:
-        normalized = normalize_violation_type(
-            value
+
+    for value in (
+        payload.missing_ppe
+    ):
+        normalized = (
+            normalize_violation_type(
+                value
+            )
         )
 
+
         if (
-            normalized in CORE_PPE
+            normalized
+            in CORE_PPE
             and normalized
             not in normalized_missing
         ):
             normalized_missing.append(
                 normalized
             )
+
 
     is_compliant = (
         len(
@@ -482,15 +497,33 @@ def create_compliance_observation(
         == 0
     )
 
-    observation = ComplianceObservation(
-        camera_id=payload.camera_id,
-        track_id=payload.track_id,
-        is_compliant=is_compliant,
-        missing_ppe=normalized_missing,
-        missing_count=len(
-            normalized_missing
-        ),
+
+    observation = (
+        ComplianceObservation(
+            camera_id=(
+                payload.camera_id
+            ),
+
+            track_id=(
+                payload.track_id
+            ),
+
+            is_compliant=(
+                is_compliant
+            ),
+
+            missing_ppe=(
+                normalized_missing
+            ),
+
+            missing_count=(
+                len(
+                    normalized_missing
+                )
+            ),
+        )
     )
+
 
     db.add(
         observation
@@ -501,6 +534,17 @@ def create_compliance_observation(
     db.refresh(
         observation
     )
+
+
+    non_compliance_pct = round(
+        (
+            observation.missing_count
+            / PPE_COUNT
+        )
+        * 100,
+        1,
+    )
+
 
     return {
         "id":
@@ -522,16 +566,7 @@ def create_compliance_observation(
             observation.missing_count,
 
         "non_compliance_pct":
-            round(
-                (
-                    observation.missing_count
-                    / len(
-                        CORE_PPE
-                    )
-                )
-                * 100,
-                1,
-            ),
+            non_compliance_pct,
 
         "observed_at":
             observation.observed_at,
@@ -539,7 +574,7 @@ def create_compliance_observation(
 
 
 # ============================================================
-# DUPLICATE EVENTS
+# DUPLICATE ANALYTICS EVENTS
 # ============================================================
 
 @router.post(
@@ -548,23 +583,18 @@ def create_compliance_observation(
 )
 def create_duplicate_event(
     payload: DuplicateEventCreate,
-    db: Session = Depends(get_db),
+
+    db: Session = Depends(
+        get_db
+    ),
 ):
-    """
-    Record one lightweight duplicate-alert metric.
-
-    event_type:
-        alert_candidate
-        alert_created
-        alert_suppressed
-    """
-
     if (
         payload.event_type
         not in DUPLICATE_EVENT_TYPES
     ):
         raise HTTPException(
             status_code=422,
+
             detail=(
                 "Expected alert_candidate, "
                 "alert_created, or "
@@ -572,14 +602,17 @@ def create_duplicate_event(
             ),
         )
 
+
     camera = db.get(
         Camera,
         payload.camera_id,
     )
 
+
     if camera is None:
         raise HTTPException(
             status_code=400,
+
             detail=(
                 f"Camera "
                 f"{payload.camera_id} "
@@ -587,16 +620,23 @@ def create_duplicate_event(
             ),
         )
 
-    event = DetectionEvent(
-        camera_id=payload.camera_id,
-        track_id=payload.track_id,
-        class_name=payload.event_type,
 
-        # DetectionEvent requires a confidence value.
-        # Duplicate metrics are categorical rather than
-        # model-confidence measurements.
+    event = DetectionEvent(
+        camera_id=(
+            payload.camera_id
+        ),
+
+        track_id=(
+            payload.track_id
+        ),
+
+        class_name=(
+            payload.event_type
+        ),
+
         confidence=1.0,
     )
+
 
     db.add(
         event
@@ -607,6 +647,7 @@ def create_duplicate_event(
     db.refresh(
         event
     )
+
 
     return {
         "id":
@@ -637,7 +678,10 @@ def analytics_trends(
         ge=1,
         le=365,
     ),
-    db: Session = Depends(get_db),
+
+    db: Session = Depends(
+        get_db
+    ),
 ):
     return trend(
         db,
@@ -651,14 +695,19 @@ def analytics_trends(
 
 @router.get("/violations")
 def analytics_violations(
-    db: Session = Depends(get_db),
+    db: Session = Depends(
+        get_db
+    ),
 ):
     rows = db.execute(
         select(
             Incident.violation_type,
+
             func.count(
                 Incident.id
-            ).label("count"),
+            ).label(
+                "count"
+            ),
         )
         .group_by(
             Incident.violation_type
@@ -670,6 +719,7 @@ def analytics_violations(
         )
     ).all()
 
+
     return [
         {
             "violation_type":
@@ -678,6 +728,7 @@ def analytics_violations(
             "count":
                 row.count,
         }
+
         for row in rows
     ]
 
@@ -688,15 +739,21 @@ def analytics_violations(
 
 @router.get("/sites")
 def analytics_sites(
-    db: Session = Depends(get_db),
+    db: Session = Depends(
+        get_db
+    ),
 ):
     rows = db.execute(
         select(
             Site.id,
+
             Site.name,
+
             func.count(
                 Incident.id
-            ).label("count"),
+            ).label(
+                "count"
+            ),
         )
         .join(
             Camera,
@@ -719,6 +776,7 @@ def analytics_sites(
         )
     ).all()
 
+
     return [
         {
             "site_id":
@@ -730,6 +788,7 @@ def analytics_sites(
             "count":
                 row.count,
         }
+
         for row in rows
     ]
 
@@ -747,20 +806,15 @@ def dashboard_charts(
         ge=1,
         le=30,
     ),
-    db: Session = Depends(get_db),
+
+    db: Session = Depends(
+        get_db
+    ),
 ):
-    """
-    Return data for:
-
-        1. Violations by PPE type
-        2. PPE violations by day
-        3. Incident status distribution
-        4. Severity distribution
-    """
-
     today = datetime.now(
         timezone.utc
     ).date()
+
 
     start_date = (
         today
@@ -769,13 +823,17 @@ def dashboard_charts(
         )
     )
 
+
     start_datetime = (
         datetime.combine(
             start_date,
+
             datetime.min.time(),
+
             tzinfo=timezone.utc,
         )
     )
+
 
     # ========================================================
     # INCIDENTS FROM LAST N DAYS
@@ -793,22 +851,26 @@ def dashboard_charts(
         ).all()
     )
 
+
     # ========================================================
-    # WEEKLY VIOLATIONS BY PPE
+    # WEEKLY PPE COUNTS
     # ========================================================
 
     ppe_counts = {
         item: 0
+
         for item in CORE_PPE
     }
 
+
     # ========================================================
-    # DAILY PPE DATA
+    # DAILY PPE COUNTS
     # ========================================================
 
     daily_rows = []
 
     daily_index = {}
+
 
     for offset in range(
         days
@@ -819,6 +881,7 @@ def dashboard_charts(
                 days=offset
             )
         )
+
 
         row = {
             "date":
@@ -839,17 +902,16 @@ def dashboard_charts(
                 0,
         }
 
+
         daily_rows.append(
             row
         )
+
 
         daily_index[
             day
         ] = row
 
-    # ========================================================
-    # COUNT RECENT INCIDENTS
-    # ========================================================
 
     for incident in recent_incidents:
         ppe = (
@@ -858,19 +920,23 @@ def dashboard_charts(
             )
         )
 
+
         if (
             ppe
             not in CORE_PPE
         ):
             continue
 
+
         ppe_counts[
             ppe
         ] += 1
 
+
         day = incident_date(
             incident.detected_at
         )
+
 
         if (
             day
@@ -881,6 +947,7 @@ def dashboard_charts(
             ][
                 ppe
             ] += 1
+
 
     weekly_by_ppe = [
         {
@@ -924,13 +991,15 @@ def dashboard_charts(
         },
     ]
 
+
     # ========================================================
-    # INCIDENT STATUS DISTRIBUTION
+    # STATUS DISTRIBUTION
     # ========================================================
 
     status_rows = db.execute(
         select(
             Incident.status,
+
             func.count(
                 Incident.id
             ).label(
@@ -952,6 +1021,7 @@ def dashboard_charts(
         )
     ).all()
 
+
     status_counts = {
         "open":
             0,
@@ -966,11 +1036,13 @@ def dashboard_charts(
             0,
     }
 
+
     for row in status_rows:
         status = (
             row.status
             or "open"
         ).lower()
+
 
         if (
             status
@@ -979,6 +1051,7 @@ def dashboard_charts(
             status_counts[
                 status
             ] = row.count
+
 
     status_distribution = [
         {
@@ -1022,6 +1095,7 @@ def dashboard_charts(
         },
     ]
 
+
     # ========================================================
     # SEVERITY DISTRIBUTION
     # ========================================================
@@ -1029,6 +1103,7 @@ def dashboard_charts(
     severity_rows = db.execute(
         select(
             Incident.severity,
+
             func.count(
                 Incident.id
             ).label(
@@ -1039,6 +1114,7 @@ def dashboard_charts(
             Incident.severity
         )
     ).all()
+
 
     severity_counts = {
         "high":
@@ -1051,11 +1127,13 @@ def dashboard_charts(
             0,
     }
 
+
     for row in severity_rows:
         severity = (
             row.severity
             or "low"
         ).lower()
+
 
         if (
             severity
@@ -1064,6 +1142,7 @@ def dashboard_charts(
             severity_counts[
                 severity
             ] = row.count
+
 
     severity_distribution = [
         {
@@ -1096,6 +1175,7 @@ def dashboard_charts(
                 ],
         },
     ]
+
 
     return {
         "weekly_by_ppe":
