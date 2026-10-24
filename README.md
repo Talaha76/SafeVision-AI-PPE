@@ -1,4 +1,51 @@
+<div align="center">
+
 # SafeVision AI — PPE Intelligence Platform
+
+**Browser-Based PPE Detection, Incident Management & Workplace Safety Analytics**
+
+[![React](https://img.shields.io/badge/React-Frontend-149ECA?logo=react&logoColor=white)](https://react.dev/)
+[![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![ONNX Runtime](https://img.shields.io/badge/ONNX_Runtime-Web-005CED)](https://onnxruntime.ai/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-Backend-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-Database-4169E1?logo=postgresql&logoColor=white)](https://www.postgresql.org/)
+[![Netlify](https://img.shields.io/badge/Netlify-Deployed-00C7B7?logo=netlify&logoColor=white)](https://www.netlify.com/)
+
+**Live application:** https://safevision-ai-ppe.netlify.app
+
+</div>
+
+
+## Table of Contents
+
+- [Live Application](#live-application)
+- [Screenshots](#screenshots)
+- [Key Features](#key-features)
+- [PPE Detection](#ppe-detection)
+- [System Architecture](#system-architecture)
+- [Technology Stack](#technology-stack)
+- [Repository Structure](#repository-structure)
+- [Local Development](#local-development)
+- [1. Clone the Repository](#1-clone-the-repository)
+- [2. Configure the Backend](#2-configure-the-backend)
+- [3. Configure the Frontend](#3-configure-the-frontend)
+- [Optional Local PostgreSQL with Docker](#optional-local-postgresql-with-docker)
+- [Browser Model Assets](#browser-model-assets)
+- [Live Detection Flow](#live-detection-flow)
+- [Upload Detection Flow](#upload-detection-flow)
+- [Incident Management](#incident-management)
+- [Evidence Retention](#evidence-retention)
+- [API Overview](#api-overview)
+- [Analytics](#analytics)
+- [Model Evaluation](#model-evaluation)
+- [Testing](#testing)
+- [Production Configuration](#production-configuration)
+- [Design Notes](#design-notes)
+- [Limitations](#limitations)
+- [Future Improvements](#future-improvements)
+- [Project Goal](#project-goal)
+
+---
 
 SafeVision AI is a full-stack computer vision platform for detecting personal protective equipment (PPE) violations, reviewing incidents, and visualizing workplace safety trends.
 
@@ -6,9 +53,7 @@ The application performs PPE inference directly in the browser using an ONNX mod
 
 > **Portfolio project:** SafeVision AI demonstrates an end-to-end computer vision system, including model inference, browser-side tracking, event confirmation, REST APIs, database persistence, analytics, evidence handling, responsive UI design, and cloud deployment.
 
-## Live Demo
-
-**Frontend:** https://safevision-ai-ppe.netlify.app  
+## Live Application
 
 > 🔴 **IMPORTANT: AFTER USING LIVE DETECTION, PLEASE CLICK THE RED `CLEAR DATA` BUTTON TO REMOVE ALL INCIDENTS RECORDED DURING YOUR SESSION.**
 
@@ -22,43 +67,43 @@ The production frontend is deployed on Netlify, with a FastAPI backend and Postg
 
 ![SafeVision AI dashboard overview](docs/images/dashboard-overview.png)
 
-The main dashboard summarizes current incident activity, compliance metrics, resolution performance, duplicate suppression, and the recent incident trend.
+*The main dashboard summarizes current incident activity, compliance metrics, resolution performance, duplicate suppression, and the recent incident trend.*
 
 ### PPE Analytics and Incident Status
 
 ![PPE violation breakdown and incident status](docs/images/dashboard-analytics-status.png)
 
-Seven-day PPE analytics show violation frequency by PPE type alongside the current incident workflow distribution.
+*Seven-day PPE analytics show violation frequency by PPE type alongside the current incident workflow distribution.*
 
 ### Daily PPE Trend and Severity Distribution
 
 ![Daily PPE trend and severity distribution](docs/images/dashboard-ppe-severity.png)
 
-The dashboard includes daily PPE trends and a risk-oriented severity breakdown.
+*The dashboard includes daily PPE trends and a risk-oriented severity breakdown.*
 
 ### Incident Lookup and Recent Incidents
 
 ![Incident lookup and recent incidents](docs/images/dashboard-incidents.png)
 
-Incident records can be searched by ID, filtered across the full incident history, updated through the operational workflow, and expanded to view available evidence.
+*Incident records can be searched by ID, filtered across the full incident history, updated through the operational workflow, and expanded to view available evidence.*
 
 ### Live Browser Detection
 
 ![Live detection page](docs/images/live-detection.png)
 
-Live Detection uses the browser camera, browser-side inference, lightweight person tracking, violation confirmation, and incident creation.
+*Live Detection uses the browser camera, browser-side inference, lightweight person tracking, violation confirmation, and incident creation.*
 
 ### Upload Detection
 
 ![Upload detection page](docs/images/upload-detection.png)
 
-Upload Detection analyzes images or full videos locally in the browser without creating dashboard incidents.
+*Upload Detection analyzes images or full videos locally in the browser without creating dashboard incidents.*
 
 ### Dark Mode
 
 ![SafeVision AI dark mode dashboard](docs/images/dashboard-dark.png)
 
-The interface supports a responsive dark theme across the dashboard and detection pages.
+*The interface supports a responsive dark theme across the dashboard and detection pages.*
 
 ---
 
