@@ -2,17 +2,24 @@
 # SAFEVISION AI — EVIDENCE SERVICE
 # ============================================================
 #
-# Stores incident evidence images in PostgreSQL and keeps only
-# the latest configured images to control database storage.
+# Stores incident evidence in PostgreSQL.
 #
-# Includes legacy server-side OpenCV evidence helpers.
+# Normal/live evidence is limited to the latest configured
+# records. Permanent demo evidence is never pruned.
 #
 # ============================================================
 
-from sqlalchemy import delete, select
+from sqlalchemy import (
+    delete,
+    select,
+)
+
 from sqlalchemy.orm import Session
 
-from app.db.models import IncidentEvidence
+from app.db.models import (
+    Incident,
+    IncidentEvidence,
+)
 
 
 def _prune_old_evidence(
@@ -26,11 +33,21 @@ def _prune_old_evidence(
         select(
             IncidentEvidence.id
         )
+        .join(
+            Incident,
+            Incident.id
+            == IncidentEvidence.incident_id,
+        )
+        .where(
+            Incident.is_demo.is_(False)
+        )
         .order_by(
             IncidentEvidence.created_at.desc(),
             IncidentEvidence.id.desc(),
         )
-        .offset(keep_latest)
+        .offset(
+            keep_latest
+        )
     ).all()
 
     if old_evidence_ids:
@@ -52,20 +69,6 @@ def save_evidence_bytes_to_db(
     mime_type: str = "image/jpeg",
     keep_latest: int = 100,
 ) -> int:
-    """
-    Save an already-encoded image directly to PostgreSQL.
-
-    This is the preferred evidence path for browser-side
-    SafeVision inference.
-
-    The browser performs:
-        camera capture
-        annotation
-        JPEG encoding
-
-    The backend only stores the bytes.
-    """
-
     if not image_bytes:
         raise ValueError(
             "Evidence image is empty."
@@ -77,9 +80,10 @@ def save_evidence_bytes_to_db(
         mime_type=mime_type,
     )
 
-    db.add(evidence)
+    db.add(
+        evidence
+    )
 
-    # Assign evidence.id and created_at.
     db.flush()
 
     _prune_old_evidence(
@@ -92,13 +96,6 @@ def save_evidence_bytes_to_db(
 
 # ============================================================
 # LEGACY SERVER-SIDE EVIDENCE SUPPORT
-# ============================================================
-#
-# These functions remain so older local ML code does not break.
-#
-# OpenCV is intentionally imported INSIDE encode_evidence().
-# This means the lightweight FastAPI production path does not
-# load OpenCV merely because this module was imported.
 # ============================================================
 
 
@@ -170,14 +167,22 @@ def _draw_labeled_box(
 
     cv2.rectangle(
         image,
-        (x1, y1),
-        (x2, y2),
+        (
+            x1,
+            y1,
+        ),
+        (
+            x2,
+            y2,
+        ),
         color,
         thickness,
     )
 
     font = cv2.FONT_HERSHEY_SIMPLEX
+
     font_scale = 0.6
+
     font_thickness = 2
 
     (
@@ -261,14 +266,6 @@ def encode_evidence(
     violation_label: str | None = None,
     violation_confidence: float | None = None,
 ) -> tuple[bytes, str]:
-    """
-    Legacy OpenCV evidence encoder.
-
-    This function is retained for older local/server inference
-    code. OpenCV is loaded lazily only if this function is
-    actually called.
-    """
-
     import cv2
 
     annotated = frame.copy()
@@ -277,19 +274,22 @@ def encode_evidence(
         person_box = box
 
     if person_box is not None:
-        if track_id is not None:
-            person_label = (
-                f"Person / Track #{track_id}"
-            )
-        else:
-            person_label = "Person"
+        person_label = (
+            f"Person / Track #{track_id}"
+            if track_id is not None
+            else "Person"
+        )
 
         _draw_labeled_box(
             cv2,
             annotated,
             person_box,
             person_label,
-            (255, 120, 30),
+            (
+                255,
+                120,
+                30,
+            ),
             thickness=2,
         )
 
@@ -301,8 +301,14 @@ def encode_evidence(
 
         label = (
             label
-            .replace("_", " ")
-            .replace("-", " ")
+            .replace(
+                "_",
+                " ",
+            )
+            .replace(
+                "-",
+                " ",
+            )
         )
 
         if (
@@ -319,15 +325,25 @@ def encode_evidence(
             annotated,
             violation_box,
             label,
-            (0, 0, 255),
+            (
+                0,
+                0,
+                255,
+            ),
             thickness=3,
         )
 
     elif violation_label:
         label = (
             violation_label
-            .replace("_", " ")
-            .replace("-", " ")
+            .replace(
+                "_",
+                " ",
+            )
+            .replace(
+                "-",
+                " ",
+            )
         )
 
         if (
@@ -342,23 +358,28 @@ def encode_evidence(
         cv2.putText(
             annotated,
             label,
-            (20, 35),
+            (
+                20,
+                35,
+            ),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.8,
-            (0, 0, 255),
+            (
+                0,
+                0,
+                255,
+            ),
             2,
             cv2.LINE_AA,
         )
 
-    success, encoded = (
-        cv2.imencode(
-            ".jpg",
-            annotated,
-            [
-                cv2.IMWRITE_JPEG_QUALITY,
-                90,
-            ],
-        )
+    success, encoded = cv2.imencode(
+        ".jpg",
+        annotated,
+        [
+            cv2.IMWRITE_JPEG_QUALITY,
+            90,
+        ],
     )
 
     if not success:
@@ -385,10 +406,6 @@ def save_evidence_to_db(
     violation_label: str | None = None,
     violation_confidence: float | None = None,
 ) -> int:
-    """
-    Legacy server-side evidence path.
-    """
-
     image_bytes, mime_type = (
         encode_evidence(
             frame,

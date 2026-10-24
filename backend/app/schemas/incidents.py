@@ -1,27 +1,52 @@
 # ============================================================
 # SAFEVISION AI — INCIDENT SCHEMAS
 # ============================================================
-#
-# Defines the request and response data models used to
-# create, update, validate, and return incident records.
-#
-# ============================================================
 
 from datetime import datetime
 from typing import Literal
-from pydantic import BaseModel, ConfigDict, Field
 
-Status = Literal["open", "reviewing", "resolved", "dismissed"]
-Severity = Literal["low", "medium", "high", "critical"]
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+)
+
+
+Status = Literal[
+    "open",
+    "reviewing",
+    "resolved",
+    "dismissed",
+]
+
+Severity = Literal[
+    "low",
+    "medium",
+    "high",
+    "critical",
+]
 
 
 class IncidentCreate(BaseModel):
     camera_id: int
+
     track_id: int
-    violation_type: str = Field(min_length=1, max_length=120)
+
+    violation_type: str = Field(
+        min_length=1,
+        max_length=120,
+    )
+
     missing_ppe: list[str]
+
     severity: Severity
-    confidence: float | None = Field(default=None, ge=0, le=1)
+
+    confidence: float | None = Field(
+        default=None,
+        ge=0,
+        le=1,
+    )
+
     evidence_path: str | None = None
 
 
@@ -31,8 +56,16 @@ class IncidentPatch(BaseModel):
 
 
 class IncidentRead(IncidentCreate):
-    model_config = ConfigDict(from_attributes=True)
+    model_config = ConfigDict(
+        from_attributes=True,
+    )
+
     id: int
+
     detected_at: datetime
+
     status: Status
+
     resolved_at: datetime | None = None
+
+    is_demo: bool = False
