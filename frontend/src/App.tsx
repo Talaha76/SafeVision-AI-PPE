@@ -13,6 +13,7 @@ import {
   useEffect,
   useState,
 } from 'react'
+import type { ReactNode } from 'react'
 
 import {
   Bar,
@@ -464,7 +465,7 @@ export default function App() {
           {
             label: 'Open incidents',
             value: summary.open_incidents,
-            hint: 'Require review',
+            hint: 'Waiting for review',
             tone: 'orange',
           },
           {
@@ -473,14 +474,17 @@ export default function App() {
               summary.compliance_rate,
               '%'
             ),
-            hint: 'Average PPE missing rate',
+            hint: 'Share of checks missing PPE',
             tone: 'indigo',
           },
           {
             label: 'Top violation',
             value:
               summary.most_common_violation
-              ?? '—',
+                ? formatViolation(
+                    summary.most_common_violation
+                  )
+                : '—',
             hint: 'Most frequent issue',
             tone: 'red',
           },
@@ -490,7 +494,7 @@ export default function App() {
               summary.avg_resolution_minutes,
               ' min'
             ),
-            hint: 'Resolution time',
+            hint: 'Detection to resolved',
             tone: 'cyan',
           },
           {
@@ -499,7 +503,7 @@ export default function App() {
               summary.duplicate_reduction_pct,
               '%'
             ),
-            hint: 'Alerts suppressed',
+            hint: 'Repeat alerts suppressed',
             tone: 'green',
           },
         ]
@@ -512,31 +516,33 @@ export default function App() {
 
   const chartStroke =
     theme === 'dark'
-      ? '#60a5fa'
-      : '#2563eb'
+      ? '#ffc72c'
+      : '#1f2328'
 
   const chartGrid =
     theme === 'dark'
-      ? 'rgba(148, 163, 184, 0.11)'
-      : 'rgba(100, 116, 139, 0.14)'
+      ? 'rgba(236, 233, 224, 0.08)'
+      : 'rgba(31, 35, 40, 0.08)'
 
   const chartText =
     theme === 'dark'
-      ? '#a9bad0'
-      : '#64748b'
+      ? '#9a9d9f'
+      : '#6b6f72'
 
   const tooltipStyle = {
     background:
       theme === 'dark'
-        ? '#111c2e'
+        ? '#26292d'
         : '#ffffff',
 
     border:
       theme === 'dark'
-        ? '1px solid #33445d'
-        : '1px solid #dde4ee',
+        ? '1px solid #3a3e43'
+        : '1px solid #e2e0d9',
 
-    borderRadius: '12px',
+    borderRadius: '8px',
+
+    fontFamily: 'Barlow, system-ui, sans-serif',
 
     boxShadow:
       theme === 'dark'
@@ -545,8 +551,8 @@ export default function App() {
 
     color:
       theme === 'dark'
-        ? '#f8fafc'
-        : '#0f172a',
+        ? '#f2f0ea'
+        : '#1f2328',
 
     fontSize: '12px',
 
@@ -557,16 +563,16 @@ export default function App() {
     color:
       theme === 'dark'
         ? '#ffffff'
-        : '#0f172a',
+        : '#1f2328',
 
-    fontWeight: 800,
+    fontWeight: 700,
   }
 
   const tooltipItemStyle = {
     color:
       theme === 'dark'
-        ? '#dbe7f5'
-        : '#334155',
+        ? '#d6d4ce'
+        : '#45494d',
 
     fontWeight: 600,
   }
@@ -574,27 +580,27 @@ export default function App() {
 
   const ppeColors:
     Record<string, string> = {
-      hardhat: '#4f8ef7',
-      vest: '#8b5cf6',
-      mask: '#22c7d6',
-      gloves: '#f5a524',
+      hardhat: '#f2b705',
+      vest: '#ee6c1c',
+      mask: '#3f7cac',
+      gloves: '#8a6fbf',
     }
 
 
   const statusColors:
     Record<string, string> = {
-      open: '#fb923c',
-      reviewing: '#8b5cf6',
-      resolved: '#34d399',
-      dismissed: '#94a3b8',
+      open: '#e5484d',
+      reviewing: '#f2b705',
+      resolved: '#2ba471',
+      dismissed: '#9a9d9f',
     }
 
 
   const severityColors:
     Record<string, string> = {
-      high: '#f05252',
-      medium: '#fbbf24',
-      low: '#60a5fa',
+      high: '#e5484d',
+      medium: '#f2b705',
+      low: '#3f7cac',
     }
 
 
@@ -908,163 +914,207 @@ export default function App() {
   }
 
 
+  const pageMeta: Record<Page, { title: string, subtitle: string }> = {
+    overview: {
+      title: 'Safety overview',
+      subtitle: 'PPE compliance, incident trends and the review queue, refreshed every 5 seconds.',
+    },
+    live: {
+      title: 'Live detection',
+      subtitle: '',
+    },
+    upload: {
+      title: 'Upload detection',
+      subtitle: '',
+    },
+  }
+
+  const navItems: {
+    id: Page
+    label: string
+    icon: ReactNode
+  }[] = [
+    {
+      id: 'overview',
+      label: 'Overview',
+      icon: (
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <rect x="3.5" y="3.5" width="7" height="9" rx="1.5" />
+          <rect x="13.5" y="3.5" width="7" height="5" rx="1.5" />
+          <rect x="13.5" y="11.5" width="7" height="9" rx="1.5" />
+          <rect x="3.5" y="15.5" width="7" height="5" rx="1.5" />
+        </svg>
+      ),
+    },
+    {
+      id: 'live',
+      label: 'Live detection',
+      icon: (
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <rect x="3" y="6.5" width="12.5" height="11" rx="2" />
+          <path d="M15.5 10.5 21 7.5v9l-5.5-3" />
+        </svg>
+      ),
+    },
+    {
+      id: 'upload',
+      label: 'Upload',
+      icon: (
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <path d="M12 15.5V4.5M7.5 9 12 4.5 16.5 9" />
+          <path d="M4.5 14.5v3a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-3" />
+        </svg>
+      ),
+    },
+  ]
+
+
   return (
-    <main>
+    <div className="appShell">
 
       {/* ==================================================
-          HEADER
+          SIDEBAR
           ================================================== */}
 
-      <header className="appHeader">
+      <aside className="sidebar">
 
         <div className="brandArea">
 
-          <div className="brandMark">
-            SV
+          <div className="brandMark" aria-hidden="true">
+            <svg viewBox="0 0 32 32">
+              <path d="M6 20.5a10 10 0 0 1 20 0" />
+              <path d="M4 20.5h24v3H4z" />
+              <path d="M16 10.5v4" />
+            </svg>
           </div>
 
           <div className="brandCopy">
-
-            <p className="eyebrow">
-              PPE Intelligence Platform
-            </p>
-
-            <div className="brandTitleRow">
-
-              <h1>
-                SafeVision AI
-              </h1>
-
-              <span
-                className={
-                  summary
-                    ? 'systemPill online'
-                    : 'systemPill'
-                }
-              >
-                <span
-                  className="systemDot"
-                />
-
-                {
-                  summary
-                    ? 'System online'
-                    : 'Connecting'
-                }
-              </span>
-
-            </div>
-
+            <strong>SafeVision</strong>
+            <span>PPE monitoring</span>
           </div>
 
         </div>
 
 
-        <div className="headerActions">
+        <nav className="mainNav" aria-label="Main">
+          {
+            navItems.map(item => (
+              <button
+                key={item.id}
+                className={
+                  activePage === item.id
+                    ? 'navButton active'
+                    : 'navButton'
+                }
+                aria-current={
+                  activePage === item.id
+                    ? 'page'
+                    : undefined
+                }
+                onClick={() =>
+                  setActivePage(item.id)
+                }
+              >
+                {item.icon}
+                <span>{item.label}</span>
+              </button>
+            ))
+          }
+        </nav>
 
-          <nav className="mainNav">
 
-            <button
-              className={
-                activePage === 'overview'
-                  ? 'navButton active'
-                  : 'navButton'
-              }
-              onClick={() =>
-                setActivePage('overview')
-              }
-            >
-              Overview
-            </button>
+        <div className="sidebarFooter">
 
-            <button
-              className={
-                activePage === 'live'
-                  ? 'navButton active'
-                  : 'navButton'
-              }
-              onClick={() =>
-                setActivePage('live')
-              }
-            >
-              Live Detection
-            </button>
-
-            <button
-              className={
-                activePage === 'upload'
-                  ? 'navButton active'
-                  : 'navButton'
-              }
-              onClick={() =>
-                setActivePage('upload')
-              }
-            >
-              Upload
-            </button>
-
-          </nav>
-
+          <span
+            className={
+              summary
+                ? 'systemPill online'
+                : 'systemPill'
+            }
+          >
+            <span className="systemDot" />
+            {
+              summary
+                ? 'Backend connected'
+                : 'Connecting…'
+            }
+          </span>
 
           <button
             className="themeToggle"
             onClick={toggleTheme}
             aria-label="Toggle dark mode"
           >
+            {
+              theme === 'light'
+                ? (
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5Z" />
+                  </svg>
+                )
+                : (
+                  <svg viewBox="0 0 24 24" aria-hidden="true">
+                    <circle cx="12" cy="12" r="4" />
+                    <path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4" />
+                  </svg>
+                )
+            }
             <span>
               {
                 theme === 'light'
-                  ? '☾'
-                  : '☀'
+                  ? 'Dark mode'
+                  : 'Light mode'
               }
             </span>
-
-            {
-              theme === 'light'
-                ? 'Dark'
-                : 'Light'
-            }
           </button>
-
-
-          {
-            activePage === 'overview'
-            && (
-
-              <>
-                <button
-                  className="refreshButton"
-                  onClick={clearDashboardData}
-                  disabled={clearingData}
-                  style={{
-                    background: '#dc2626',
-                    borderColor: '#dc2626',
-                    color: '#ffffff',
-                    fontWeight: 800,
-                  }}
-                >
-                  {
-                    clearingData
-                      ? 'Clearing...'
-                      : 'Clear Data'
-                  }
-                </button>
-
-                <button
-                  className="refreshButton"
-                  onClick={load}
-                  disabled={clearingData}
-                >
-                  ↻ Refresh
-                </button>
-              </>
-
-            )
-          }
 
         </div>
 
-      </header>
+      </aside>
+
+
+      <main className="appMain">
+
+      {
+        activePage === 'overview'
+        && (
+          <header className="appHeader">
+
+            <div className="pageTitle">
+              <h1>{pageMeta.overview.title}</h1>
+              <p>{pageMeta.overview.subtitle}</p>
+            </div>
+
+            <div className="headerActions">
+
+              <button
+                className="refreshButton"
+                onClick={load}
+                disabled={clearingData}
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M19.5 12a7.5 7.5 0 1 1-2.2-5.3M19.5 4.5v4h-4" />
+                </svg>
+                Refresh
+              </button>
+
+              <button
+                className="refreshButton dangerButton"
+                onClick={clearDashboardData}
+                disabled={clearingData}
+              >
+                {
+                  clearingData
+                    ? 'Clearing…'
+                    : 'Clear data'
+                }
+              </button>
+
+            </div>
+
+          </header>
+        )
+      }
 
 
       {
@@ -1075,20 +1125,20 @@ export default function App() {
             role="note"
             aria-label="Live Detection data reminder"
           >
-            <span className="dashboardCautionIcon">
+            <span className="dashboardCautionIcon" aria-hidden="true">
               !
             </span>
 
             <p>
-              <strong>IMPORTANT:</strong>
+              <strong>Finished testing Live Detection?</strong>
               {' '}
-              AFTER USING LIVE DETECTION, PLEASE CLICK THE RED
+              Press
               {' '}
               <span className="dashboardCautionAction">
-                CLEAR DATA
+                Clear data
               </span>
               {' '}
-              BUTTON IN THE TOP RIGHT TO REMOVE ALL INCIDENTS RECORDED DURING YOUR SESSION. DEMO DATA WILL REMAIN.
+              above to remove the incidents recorded in your session. Demo data stays in place.
             </p>
           </div>
         )
@@ -1205,10 +1255,6 @@ export default function App() {
 
                           <div>
 
-                            <p className="sectionEyebrow">
-                              ANALYTICS
-                            </p>
-
                             <h2>
                               Incidents over time
                             </h2>
@@ -1221,7 +1267,7 @@ export default function App() {
                           </div>
 
                           <span className="periodBadge">
-                            Last 14 days
+                            14 days
                           </span>
 
                         </div>
@@ -1288,14 +1334,12 @@ export default function App() {
                                 dataKey="count"
                                 name="Incidents"
                                 stroke={chartStroke}
-                                strokeWidth={3}
-                                dot={{
-                                  r: 3,
-                                  fill: chartStroke,
-                                  strokeWidth: 0,
-                                }}
+                                strokeWidth={2.5}
+                                dot={false}
                                 activeDot={{
-                                  r: 6,
+                                  r: 5,
+                                  strokeWidth: 0,
+                                  fill: chartStroke,
                                 }}
                               />
 
@@ -1329,10 +1373,6 @@ export default function App() {
 
                                 <div>
 
-                                  <p className="proChartEyebrow">
-                                    WEEKLY BREAKDOWN
-                                  </p>
-
                                   <h2>
                                     Violations by PPE type
                                   </h2>
@@ -1346,7 +1386,7 @@ export default function App() {
                                 </div>
 
                                 <span className="proPeriodBadge">
-                                  7 DAYS
+                                  7 days
                                 </span>
 
                               </div>
@@ -1526,11 +1566,11 @@ export default function App() {
                                     <Bar
                                       dataKey="count"
                                       name="Violations"
-                                      barSize={21}
+                                      barSize={18}
                                       radius={[
                                         0,
-                                        8,
-                                        8,
+                                        4,
+                                        4,
                                         0,
                                       ]}
                                     >
@@ -1547,15 +1587,8 @@ export default function App() {
                                                   .toLowerCase()
 
                                               const fill =
-                                                key === 'hardhat'
-                                                  ? 'url(#hardhatGradient)'
-                                                  : key === 'vest'
-                                                    ? 'url(#vestGradient)'
-                                                    : key === 'mask'
-                                                      ? 'url(#maskGradient)'
-                                                      : key === 'gloves'
-                                                        ? 'url(#glovesGradient)'
-                                                        : '#64748b'
+                                                ppeColors[key]
+                                                ?? '#9a9d9f'
 
                                               return (
 
@@ -1575,7 +1608,7 @@ export default function App() {
                                         position="right"
                                         fill={chartText}
                                         fontSize={11}
-                                        fontWeight={800}
+                                        fontWeight={700}
                                       />
 
                                     </Bar>
@@ -1598,10 +1631,6 @@ export default function App() {
                               <div className="proChartHeader">
 
                                 <div>
-
-                                  <p className="proChartEyebrow">
-                                    INCIDENT STATUS
-                                  </p>
 
                                   <h2>
                                     Resolution status
@@ -1637,10 +1666,10 @@ export default function App() {
                                         nameKey="status"
                                         cx="50%"
                                         cy="50%"
-                                        innerRadius={72}
-                                        outerRadius={105}
-                                        paddingAngle={4}
-                                        cornerRadius={8}
+                                        innerRadius={78}
+                                        outerRadius={100}
+                                        paddingAngle={2}
+                                        cornerRadius={3}
                                         stroke="none"
                                         onMouseEnter={(
                                           _,
@@ -1718,7 +1747,7 @@ export default function App() {
                                       {
                                         hoveredStatus
                                           ? hoveredStatus.label
-                                          : 'TOTAL'
+                                          : 'total'
                                       }
                                     </span>
 
@@ -1807,10 +1836,6 @@ export default function App() {
 
                                 <div>
 
-                                  <p className="proChartEyebrow">
-                                    DAILY PPE TREND
-                                  </p>
-
                                   <h2>
                                     PPE violations by day
                                   </h2>
@@ -1823,7 +1848,7 @@ export default function App() {
                                 </div>
 
                                 <span className="proPeriodBadge">
-                                  7 DAYS
+                                  7 days
                                 </span>
 
                               </div>
@@ -2009,8 +2034,8 @@ export default function App() {
                                       }
                                       maxBarSize={34}
                                       radius={[
-                                        6,
-                                        6,
+                                        3,
+                                        3,
                                         0,
                                         0,
                                       ]}
@@ -2034,10 +2059,6 @@ export default function App() {
                               <div className="proChartHeader">
 
                                 <div>
-
-                                  <p className="proChartEyebrow">
-                                    RISK PROFILE
-                                  </p>
 
                                   <h2>
                                     Severity distribution
@@ -2073,10 +2094,10 @@ export default function App() {
                                         nameKey="severity"
                                         cx="50%"
                                         cy="50%"
-                                        innerRadius={72}
-                                        outerRadius={105}
-                                        paddingAngle={4}
-                                        cornerRadius={8}
+                                        innerRadius={78}
+                                        outerRadius={100}
+                                        paddingAngle={2}
+                                        cornerRadius={3}
                                         stroke="none"
                                         onMouseEnter={(
                                           _,
@@ -2154,7 +2175,7 @@ export default function App() {
                                       {
                                         hoveredSeverity
                                           ? hoveredSeverity.label
-                                          : 'TOTAL'
+                                          : 'total'
                                       }
                                     </span>
 
@@ -2255,18 +2276,13 @@ export default function App() {
 
                           <div>
 
-                            <p className="sectionEyebrow">
-                              OPERATIONS
-                            </p>
-
                             <h2>
                               Recent incidents
                             </h2>
 
                             <p className="panelDescription">
-                              Latest 50 incidents by default.
-                              Filters query the full Incident
-                              History.
+                              The 50 newest incidents. Any filter
+                              searches the full incident history.
                             </p>
 
                           </div>
@@ -2590,7 +2606,11 @@ export default function App() {
                                           <td>
 
                                             <button
-                                              className="incidentIdButton"
+                                              className={
+                                                isExpanded
+                                                  ? 'incidentIdButton expanded'
+                                                  : 'incidentIdButton'
+                                              }
                                               onClick={() =>
                                                 toggleIncidentEvidence(
                                                   incident.id
@@ -2602,12 +2622,10 @@ export default function App() {
                                             >
                                               #{incident.id}
 
-                                              <span className="incidentArrow">
-                                                {
-                                                  isExpanded
-                                                    ? '▲'
-                                                    : '▼'
-                                                }
+                                              <span className="incidentArrow" aria-hidden="true">
+                                                <svg viewBox="0 0 12 12">
+                                                  <path d="M3 4.5 6 7.5 9 4.5" />
+                                                </svg>
                                               </span>
                                             </button>
 
@@ -2709,9 +2727,6 @@ export default function App() {
                                               aria-label={
                                                 `Change status for incident #${incident.id}`
                                               }
-                                              style={{
-                                                minWidth: '128px',
-                                              }}
                                             >
                                               <option value="open">
                                                 Open
@@ -2747,7 +2762,7 @@ export default function App() {
                                                     <div>
 
                                                       <p className="evidenceEyebrow">
-                                                        INCIDENT EVIDENCE
+                                                        Evidence snapshot
                                                       </p>
 
                                                       <h3>
@@ -2987,6 +3002,8 @@ export default function App() {
             )
       }
 
-    </main>
+      </main>
+
+    </div>
   )
 }

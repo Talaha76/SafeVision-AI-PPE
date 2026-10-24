@@ -129,8 +129,8 @@ export default function IncidentLookup() {
           </h2>
 
           <p>
-            Enter an incident ID to retrieve
-            its details and available evidence.
+            Jump straight to one incident and its
+            evidence snapshot.
           </p>
         </div>
       </div>
@@ -151,7 +151,7 @@ export default function IncidentLookup() {
               event.target.value
             )
           }
-          placeholder="Enter incident ID, e.g. 42"
+          placeholder="Incident ID, e.g. 42"
           aria-label="Incident ID"
         />
 
@@ -161,7 +161,7 @@ export default function IncidentLookup() {
           disabled={loading}
         >
           {loading
-            ? 'Searching...'
+            ? 'Searching…'
             : 'Search'}
         </button>
 
@@ -192,9 +192,6 @@ export default function IncidentLookup() {
           <div className="lookupResultHeader">
 
             <div>
-              <p className="lookupEyebrow">
-                INCIDENT RECORD
-              </p>
 
               <h3>
                 Incident #{incident.id}
@@ -206,7 +203,7 @@ export default function IncidentLookup() {
               className={
                 incident.status === 'resolved'
                   ? 'lookupStatus resolved'
-                  : 'lookupStatus open'
+                  : `lookupStatus open status-${incident.status}`
               }
             >
               {incident.status}
@@ -317,9 +314,6 @@ export default function IncidentLookup() {
             <div className="lookupEvidenceHeading">
 
               <div>
-                <p className="lookupEyebrow">
-                  DATABASE EVIDENCE
-                </p>
 
                 <h3>
                   Evidence snapshot

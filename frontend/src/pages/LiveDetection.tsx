@@ -2983,16 +2983,12 @@ export default function LiveDetection() {
 
         <div>
 
-          <p className="live-eyebrow">
-            REAL-TIME PPE MONITORING
-          </p>
-
           <h1>
-            Live Detection
+            Live detection
           </h1>
 
           <p>
-            Run SafeVision directly from your browser camera.
+            Run PPE detection on your browser camera. Violations are recorded as incidents.
           </p>
 
         </div>
@@ -3007,10 +3003,10 @@ export default function LiveDetection() {
         >
           {
             detecting
-              ? "● LIVE"
+              ? "Live"
               : cameraOn
-                ? "READY"
-                : "OFFLINE"
+                ? "Camera ready"
+                : "Camera off"
           }
         </div>
 
@@ -3047,7 +3043,8 @@ export default function LiveDetection() {
             !cameraOn
             && (
               <div className="camera-placeholder">
-                Camera is off
+                <strong>Camera is off</strong>
+                <span>Start the camera, then start detection.</span>
               </div>
             )
           }
@@ -3055,7 +3052,7 @@ export default function LiveDetection() {
         </div>
 
 
-        <div className="camera-controls">
+        <div className={detecting ? "camera-controls detecting" : "camera-controls"}>
 
           {
             !cameraOn
@@ -3065,7 +3062,7 @@ export default function LiveDetection() {
                     startCamera
                   }
                 >
-                  Start Camera
+                  Start camera
                 </button>
               )
               : (
@@ -3074,7 +3071,7 @@ export default function LiveDetection() {
                     stopCamera
                   }
                 >
-                  Stop Camera
+                  Stop camera
                 </button>
               )
           }
@@ -3091,7 +3088,7 @@ export default function LiveDetection() {
                     !cameraOn
                   }
                 >
-                  Start Detection
+                  Start detection
                 </button>
               )
               : (
@@ -3100,7 +3097,7 @@ export default function LiveDetection() {
                     stopDetection
                   }
                 >
-                  Stop Detection
+                  Stop detection
                 </button>
               )
           }

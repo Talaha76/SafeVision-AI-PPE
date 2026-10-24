@@ -1651,11 +1651,7 @@ export default function UploadDetection() {
     <section className="upload-page">
       <div className="upload-heading">
         <div>
-          <p className="upload-eyebrow">
-            BROWSER PPE ANALYSIS
-          </p>
-
-          <h1>Upload Detection</h1>
+          <h1>Upload detection</h1>
 
           <p>
             Analyze an image or full video for
@@ -1672,8 +1668,8 @@ export default function UploadDetection() {
           }
         >
           {detecting
-            ? "ANALYZING"
-            : "READY"}
+            ? "Analyzing"
+            : "Ready"}
         </div>
       </div>
 
@@ -1687,6 +1683,13 @@ export default function UploadDetection() {
 
       <section className="upload-picker">
         <label className="upload-dropzone">
+          <span className="upload-dropzone-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24">
+              <path d="M12 15.5V4.5M7.5 9 12 4.5 16.5 9" />
+              <path d="M4.5 14.5v3a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-3" />
+            </svg>
+          </span>
+
           <strong>
             Choose an image or video
           </strong>
@@ -1765,10 +1768,10 @@ export default function UploadDetection() {
               disabled={detecting}
             >
               {detecting
-                ? "Analyzing..."
+                ? "Analyzing…"
                 : mediaType === "video"
-                  ? "Analyze Full Video"
-                  : "Run Detection"}
+                  ? "Analyze full video"
+                  : "Run detection"}
             </button>
 
             {detecting && (
@@ -1782,7 +1785,7 @@ export default function UploadDetection() {
                 }}
               >
                 {mediaType === "video"
-                  ? "Finish Partial Report"
+                  ? "Finish partial report"
                   : "Stop"}
               </button>
             )}
@@ -1832,10 +1835,10 @@ export default function UploadDetection() {
             <div className="upload-results-header">
               <div>
                 <p className="upload-results-eyebrow">
-                  IMAGE SAFETY CHECK
+                  Image check
                 </p>
 
-                <h2>Detection Results</h2>
+                <h2>Detection results</h2>
               </div>
 
               <span
@@ -1846,8 +1849,8 @@ export default function UploadDetection() {
                 }
               >
                 {imageViolations.length > 0
-                  ? "PPE FAULTS FOUND"
-                  : "NO EXPLICIT FAULTS"}
+                  ? "PPE faults found"
+                  : "No explicit faults"}
               </span>
             </div>
 
@@ -1962,10 +1965,10 @@ export default function UploadDetection() {
             <div className="upload-results-header">
               <div>
                 <p className="upload-results-eyebrow">
-                  VIDEO SAFETY REPORT
+                  Video report
                 </p>
 
-                <h2>Analysis Complete</h2>
+                <h2>Analysis complete</h2>
 
                 <p className="upload-results-description">
                   Browser-side tracking combines repeated
@@ -1982,8 +1985,8 @@ export default function UploadDetection() {
                 }
               >
                 {videoEvents.length > 0
-                  ? `${videoEvents.length} FAULTS`
-                  : "NO EXPLICIT FAULTS"}
+                  ? `${videoEvents.length} faults`
+                  : "No explicit faults"}
               </span>
             </div>
 
