@@ -474,7 +474,7 @@ export default function App() {
               '%'
             ),
             hint: 'Average PPE missing rate',
-            tone: 'green',
+            tone: 'indigo',
           },
           {
             label: 'Top violation',
@@ -500,7 +500,7 @@ export default function App() {
               '%'
             ),
             hint: 'Alerts suppressed',
-            tone: 'indigo',
+            tone: 'green',
           },
         ]
       : []
