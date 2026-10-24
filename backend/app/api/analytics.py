@@ -20,7 +20,13 @@ from datetime import (
 from fastapi import (
     APIRouter,
     Depends,
+    HTTPException,
     Query,
+)
+
+from pydantic import (
+    BaseModel,
+    Field,
 )
 
 from sqlalchemy import (
@@ -32,6 +38,8 @@ from sqlalchemy.orm import Session
 
 from app.db.models import (
     Camera,
+    ComplianceObservation,
+    DetectionEvent,
     Incident,
     Site,
 )
@@ -132,11 +140,462 @@ def incident_date(
 # EXISTING ANALYTICS
 # ============================================================
 
+class ComplianceObservationCreate(
+    BaseModel
+):
+    camera_id: int = Field(
+        ge=1,
+    )
+
+    track_id: int = Field(
+        ge=1,
+    )
+
+    is_compliant: bool
+
+    missing_ppe: list[str]
+
+    missing_count: int = Field(
+        ge=0,
+    )
+
+
+class DuplicateEventCreate(
+    BaseModel
+):
+    camera_id: int = Field(
+        ge=1,
+    )
+
+    track_id: int = Field(
+        ge=1,
+    )
+
+    event_type: str
+
+
+DUPLICATE_EVENT_TYPES = {
+    "alert_candidate",
+    "alert_created",
+    "alert_suppressed",
+}
+
+
 @router.get("/summary")
 def analytics_summary(
     db: Session = Depends(get_db),
 ):
-    return summary(db)
+    """
+    Return the SafeVision dashboard summary.
+
+    The existing compliance_rate JSON key is kept for frontend
+    compatibility, but it now represents NON-COMPLIANCE RATE.
+
+    SafeVision evaluates four required PPE categories:
+
+    1. Hardhat
+    2. Safety Vest
+    3. Mask
+    4. Gloves
+
+    Each observation contributes:
+
+    0 missing PPE ->   0% non-compliant
+    1 missing PPE ->  25% non-compliant
+    2 missing PPE ->  50% non-compliant
+    3 missing PPE ->  75% non-compliant
+    4 missing PPE -> 100% non-compliant
+
+    Dashboard Non-Compliance Rate:
+
+        total missing PPE slots
+        ----------------------- x 100
+        total observations * 4
+
+    Permanent demo incidents each count as one observation.
+    Their missing_ppe list determines how many of the four PPE
+    requirements are missing.
+
+    Live Detection observations use their stored missing_count.
+    """
+
+    result = dict(
+        summary(db)
+    )
+
+    today = datetime.now(
+        timezone.utc
+    ).date()
+
+    today_start = datetime.combine(
+        today,
+        datetime.min.time(),
+        tzinfo=timezone.utc,
+    )
+
+    # ========================================================
+    # LIVE DETECTION OBSERVATIONS
+    # ========================================================
+
+    live_rows = list(
+        db.scalars(
+            select(
+                ComplianceObservation
+            )
+            .where(
+                ComplianceObservation.observed_at
+                >= today_start
+            )
+        ).all()
+    )
+
+    live_observation_count = len(
+        live_rows
+    )
+
+    live_missing_slots = 0
+
+    for observation in live_rows:
+        # Clamp every observation between 0 and 4 missing PPE.
+        missing_count = max(
+            0,
+            min(
+                int(
+                    observation.missing_count
+                    or 0
+                ),
+                len(
+                    CORE_PPE
+                ),
+            ),
+        )
+
+        live_missing_slots += (
+            missing_count
+        )
+
+    # ========================================================
+    # PERMANENT DEMO OBSERVATIONS
+    # ========================================================
+
+    demo_rows = list(
+        db.scalars(
+            select(
+                Incident
+            )
+            .where(
+                Incident.is_demo.is_(
+                    True
+                )
+            )
+        ).all()
+    )
+
+    demo_observation_count = len(
+        demo_rows
+    )
+
+    demo_missing_slots = 0
+
+    for incident in demo_rows:
+        normalized_missing = []
+
+        for value in (
+            incident.missing_ppe
+            or []
+        ):
+            normalized = (
+                normalize_violation_type(
+                    value
+                )
+            )
+
+            if (
+                normalized in CORE_PPE
+                and normalized
+                not in normalized_missing
+            ):
+                normalized_missing.append(
+                    normalized
+                )
+
+        demo_missing_slots += min(
+            len(
+                normalized_missing
+            ),
+            len(
+                CORE_PPE
+            ),
+        )
+
+    # ========================================================
+    # NON-COMPLIANCE RATE
+    # ========================================================
+
+    total_observations = (
+        live_observation_count
+        + demo_observation_count
+    )
+
+    total_missing_slots = (
+        live_missing_slots
+        + demo_missing_slots
+    )
+
+    total_possible_slots = (
+        total_observations
+        * len(
+            CORE_PPE
+        )
+    )
+
+    if total_possible_slots <= 0:
+        result[
+            "compliance_rate"
+        ] = None
+
+    else:
+        result[
+            "compliance_rate"
+        ] = round(
+            (
+                total_missing_slots
+                / total_possible_slots
+            )
+            * 100,
+            1,
+        )
+
+    # ========================================================
+    # DUPLICATE REDUCTION
+    # ========================================================
+
+    created_alerts = int(
+        db.scalar(
+            select(
+                func.count(
+                    DetectionEvent.id
+                )
+            )
+            .where(
+                DetectionEvent.detected_at
+                >= today_start,
+                DetectionEvent.class_name
+                == "alert_created",
+            )
+        )
+        or 0
+    )
+
+    suppressed_alerts = int(
+        db.scalar(
+            select(
+                func.count(
+                    DetectionEvent.id
+                )
+            )
+            .where(
+                DetectionEvent.detected_at
+                >= today_start,
+                DetectionEvent.class_name
+                == "alert_suppressed",
+            )
+        )
+        or 0
+    )
+
+    duplicate_decisions = (
+        created_alerts
+        + suppressed_alerts
+    )
+
+    if duplicate_decisions <= 0:
+        result[
+            "duplicate_reduction_pct"
+        ] = None
+
+    else:
+        result[
+            "duplicate_reduction_pct"
+        ] = round(
+            (
+                suppressed_alerts
+                / duplicate_decisions
+            )
+            * 100,
+            1,
+        )
+
+    return result
+
+
+@router.post(
+    "/compliance-observations",
+    status_code=201,
+)
+def create_compliance_observation(
+    payload: ComplianceObservationCreate,
+    db: Session = Depends(get_db),
+):
+    """
+    Store one lightweight person-observation snapshot from
+    browser Live Detection.
+
+    Live Detection throttles these writes, so this endpoint is
+    not called for every inference frame.
+    """
+
+    normalized_missing = []
+
+    for value in payload.missing_ppe:
+        normalized = normalize_violation_type(
+            value
+        )
+
+        if (
+            normalized in CORE_PPE
+            and normalized
+            not in normalized_missing
+        ):
+            normalized_missing.append(
+                normalized
+            )
+
+    is_compliant = (
+        len(
+            normalized_missing
+        )
+        == 0
+    )
+
+    observation = ComplianceObservation(
+        camera_id=payload.camera_id,
+        track_id=payload.track_id,
+        is_compliant=is_compliant,
+        missing_ppe=normalized_missing,
+        missing_count=len(
+            normalized_missing
+        ),
+    )
+
+    db.add(
+        observation
+    )
+
+    db.commit()
+
+    db.refresh(
+        observation
+    )
+
+    return {
+        "id":
+            observation.id,
+
+        "camera_id":
+            observation.camera_id,
+
+        "track_id":
+            observation.track_id,
+
+        "is_compliant":
+            observation.is_compliant,
+
+        "missing_ppe":
+            observation.missing_ppe,
+
+        "missing_count":
+            observation.missing_count,
+
+        "observed_at":
+            observation.observed_at,
+    }
+
+
+@router.post(
+    "/duplicate-events",
+    status_code=201,
+)
+def create_duplicate_event(
+    payload: DuplicateEventCreate,
+    db: Session = Depends(get_db),
+):
+    """
+    Record one lightweight duplicate-alert metric from browser
+    Live Detection.
+
+    event_type values:
+    - alert_candidate
+    - alert_created
+    - alert_suppressed
+    """
+
+    if (
+        payload.event_type
+        not in DUPLICATE_EVENT_TYPES
+    ):
+        raise HTTPException(
+            status_code=422,
+            detail=(
+                "Expected alert_candidate, "
+                "alert_created, or "
+                "alert_suppressed."
+            ),
+        )
+
+    camera = db.get(
+        Camera,
+        payload.camera_id,
+    )
+
+    if camera is None:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Camera "
+                f"{payload.camera_id} "
+                "does not exist."
+            ),
+        )
+
+    event = DetectionEvent(
+        camera_id=payload.camera_id,
+        track_id=payload.track_id,
+        class_name=payload.event_type,
+
+        # This table requires a confidence value.
+        # Duplicate-event rows are categorical metrics,
+        # not model detections, so 1.0 means the event
+        # definitely occurred.
+        confidence=1.0,
+    )
+
+    db.add(
+        event
+    )
+
+    db.commit()
+
+    db.refresh(
+        event
+    )
+
+    return {
+        "id":
+            event.id,
+
+        "camera_id":
+            event.camera_id,
+
+        "track_id":
+            event.track_id,
+
+        "event_type":
+            event.class_name,
+
+        "detected_at":
+            event.detected_at,
+    }
 
 
 @router.get("/trends")

@@ -468,12 +468,12 @@ export default function App() {
             tone: 'orange',
           },
           {
-            label: 'Compliance rate',
+            label: 'Non-compliance rate',
             value: fmt(
               summary.compliance_rate,
               '%'
             ),
-            hint: 'Current observed rate',
+            hint: 'Average PPE missing rate',
             tone: 'green',
           },
           {

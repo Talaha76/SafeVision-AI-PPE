@@ -72,6 +72,12 @@ type MissingPpe =
   | "gloves";
 
 
+type DuplicateEventType =
+  | "alert_candidate"
+  | "alert_created"
+  | "alert_suppressed";
+
+
 type FrameViolation = {
   key: string;
   trackId: number;
@@ -121,6 +127,14 @@ const INCIDENT_COOLDOWN_MS =
 
 const REGION_COOLDOWN_MS =
   90_000;
+
+
+/*
+ * Store one person compliance/non-compliance snapshot at most
+ * once every 5 seconds per tracked person.
+ */
+const COMPLIANCE_OBSERVATION_INTERVAL_MS =
+  5_000;
 
 
 /*
@@ -538,6 +552,17 @@ export default function LiveDetection() {
     );
 
 
+  const complianceObservationTimestampsRef =
+    useRef<
+      Map<
+        number,
+        number
+      >
+    >(
+      new Map(),
+    );
+
+
   const [
     cameraOn,
     setCameraOn,
@@ -639,6 +664,11 @@ export default function LiveDetection() {
 
 
     incidentCooldownRef
+      .current
+      .clear();
+
+
+    complianceObservationTimestampsRef
       .current
       .clear();
 
@@ -1269,6 +1299,259 @@ export default function LiveDetection() {
   }
 
 
+  function postComplianceObservations(
+    detections:
+      BrowserPPEDetection[],
+
+    people:
+      PersonDetection[],
+  ) {
+    if (
+      people.length
+      === 0
+    ) {
+      return;
+    }
+
+
+    const missingByTrack =
+      new Map<
+        number,
+        Set<MissingPpe>
+      >();
+
+
+    for (
+      const person
+      of people
+    ) {
+      missingByTrack.set(
+        person.track_id,
+        new Set<MissingPpe>(),
+      );
+    }
+
+
+    for (
+      const detection
+      of detections
+    ) {
+      const missingPpe =
+        missingPpeFromClass(
+          detection.className,
+        );
+
+
+      if (!missingPpe) {
+        continue;
+      }
+
+
+      const person =
+        findPersonForViolation(
+          detection,
+          people,
+        );
+
+
+      if (!person) {
+        continue;
+      }
+
+
+      missingByTrack
+        .get(
+          person.track_id,
+        )
+        ?.add(
+          missingPpe,
+        );
+    }
+
+
+    const now =
+      Date.now();
+
+
+    const apiUrl =
+      (
+        import.meta.env
+          .VITE_API_URL
+        ??
+        "http://127.0.0.1:8000/api"
+      ).replace(
+        /\/$/,
+        "",
+      );
+
+
+    for (
+      const person
+      of people
+    ) {
+      const previous =
+        complianceObservationTimestampsRef
+          .current
+          .get(
+            person.track_id,
+          );
+
+
+      if (
+        previous !== undefined
+        &&
+        now - previous
+        < COMPLIANCE_OBSERVATION_INTERVAL_MS
+      ) {
+        continue;
+      }
+
+
+      complianceObservationTimestampsRef
+        .current
+        .set(
+          person.track_id,
+          now,
+        );
+
+
+      const missingPpe =
+        Array.from(
+          missingByTrack.get(
+            person.track_id,
+          )
+          ?? [],
+        );
+
+
+      /*
+       * This is intentionally fire-and-forget so analytics
+       * storage never slows the browser inference loop.
+       */
+      void fetch(
+        `${apiUrl}/analytics/compliance-observations`,
+        {
+          method:
+            "POST",
+
+          headers: {
+            "Content-Type":
+              "application/json",
+          },
+
+          body:
+            JSON.stringify({
+              camera_id:
+                1,
+
+              track_id:
+                person.track_id,
+
+              is_compliant:
+                missingPpe.length
+                === 0,
+
+              missing_ppe:
+                missingPpe,
+
+              missing_count:
+                missingPpe.length,
+            }),
+        },
+      )
+        .then(
+          async response => {
+            if (!response.ok) {
+              const body =
+                await response.text();
+
+              throw new Error(
+                `Compliance observation API returned ${response.status}: ${body}`,
+              );
+            }
+          },
+        )
+        .catch(
+          observationError => {
+            console.warn(
+              "[SafeVision] Compliance observation could not be saved:",
+              observationError,
+            );
+          },
+        );
+    }
+  }
+
+
+  function postDuplicateEvent(
+    eventType:
+      DuplicateEventType,
+
+    trackId:
+      number,
+  ) {
+    const apiUrl =
+      (
+        import.meta.env
+          .VITE_API_URL
+        ??
+        "http://127.0.0.1:8000/api"
+      ).replace(
+        /\/$/,
+        "",
+      );
+
+
+    /*
+     * Duplicate metrics must never block the inference loop.
+     */
+    void fetch(
+      `${apiUrl}/analytics/duplicate-events`,
+      {
+        method:
+          "POST",
+
+        headers: {
+          "Content-Type":
+            "application/json",
+        },
+
+        body:
+          JSON.stringify({
+            camera_id:
+              1,
+
+            track_id:
+              trackId,
+
+            event_type:
+              eventType,
+          }),
+      },
+    )
+      .then(
+        async response => {
+          if (!response.ok) {
+            const body =
+              await response.text();
+
+            throw new Error(
+              `Duplicate metric API returned ${response.status}: ${body}`,
+            );
+          }
+        },
+      )
+      .catch(
+        metricError => {
+          console.warn(
+            "[SafeVision] Duplicate metric could not be saved:",
+            metricError,
+          );
+        },
+      );
+  }
+
+
   async function postBrowserIncident(
     trackId: number,
     missingPpe:
@@ -1280,11 +1563,27 @@ export default function LiveDetection() {
       `${trackId}:${missingPpe}`;
 
 
+    /*
+     * This function is only reached after a violation has
+     * passed SafeVision's confirmation-frame requirement, so
+     * every call represents a real alert candidate.
+     */
+    postDuplicateEvent(
+      "alert_candidate",
+      trackId,
+    );
+
+
     if (
       incidentInFlightRef
         .current
         .has(key)
     ) {
+      postDuplicateEvent(
+        "alert_suppressed",
+        trackId,
+      );
+
       return;
     }
 
@@ -1330,6 +1629,13 @@ export default function LiveDetection() {
           now,
         );
 
+
+      postDuplicateEvent(
+        "alert_suppressed",
+        trackId,
+      );
+
+
       return;
     }
 
@@ -1348,6 +1654,11 @@ export default function LiveDetection() {
       - previousIncident
         < INCIDENT_COOLDOWN_MS
     ) {
+      postDuplicateEvent(
+        "alert_suppressed",
+        trackId,
+      );
+
       return;
     }
 
@@ -1426,6 +1737,22 @@ export default function LiveDetection() {
 
       const responseData =
         await response.json();
+
+
+      if (
+        responseData.created
+        === false
+      ) {
+        postDuplicateEvent(
+          "alert_suppressed",
+          trackId,
+        );
+      } else {
+        postDuplicateEvent(
+          "alert_created",
+          trackId,
+        );
+      }
 
 
       const savedAt =
@@ -1873,6 +2200,16 @@ export default function LiveDetection() {
         detections:
           ppeDetections,
       });
+
+
+      /*
+       * Record lightweight person-observation snapshots for
+       * the dashboard Non-Compliance Rate KPI.
+       */
+      postComplianceObservations(
+        allDetections,
+        people,
+      );
 
 
       /*
